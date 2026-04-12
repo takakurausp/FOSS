@@ -344,6 +344,105 @@ function getEicManuscriptData(ssId, key) {
 }
 
 /**
+ * EIC全体管理: 全原稿の進捗サマリーを一括取得
+ * Manuscripts・Editor_log・Review_log を各1回ずつ読み込んでメモリ上でジョイン
+ */
+function getEicAllMsData(ssId) {
+  const fmt = createDateFormatter(ssId);
+  const ss  = SpreadsheetApp.openById(ssId);
+
+  // ── 全原稿行を取得
+  const msSheet = ss.getSheetByName(MANUSCRIPTS_SHEET_NAME);
+  if (!msSheet) return [];
+  const msRaw = msSheet.getDataRange().getValues();
+  if (msRaw.length < 2) return [];
+  const msHeaders = msRaw[0].map(function(h) { return String(h).trim(); });
+
+  // ── Editor_log を一括取得
+  var allEditorLogs = [];
+  var editorSheet = ss.getSheetByName(EDITOR_LOG_SHEET_NAME);
+  if (editorSheet) {
+    var edRaw = editorSheet.getDataRange().getValues();
+    if (edRaw.length >= 2) {
+      var edHeaders = edRaw[0].map(function(h) { return String(h).trim(); });
+      for (var ei = 1; ei < edRaw.length; ei++) {
+        var eObj = {};
+        edHeaders.forEach(function(h, i) { eObj[h] = edRaw[ei][i]; });
+        allEditorLogs.push(eObj);
+      }
+    }
+  }
+
+  // ── Review_log を一括取得
+  var allReviewLogs = [];
+  var reviewSheet = ss.getSheetByName(REVIEW_LOG_SHEET_NAME);
+  if (reviewSheet) {
+    var revRaw = reviewSheet.getDataRange().getValues();
+    if (revRaw.length >= 2) {
+      var revHeaders = revRaw[0].map(function(h) { return String(h).trim(); });
+      for (var ri = 1; ri < revRaw.length; ri++) {
+        var rObj = {};
+        revHeaders.forEach(function(h, i) { rObj[h] = revRaw[ri][i]; });
+        allReviewLogs.push(rObj);
+      }
+    }
+  }
+
+  // ── 各原稿の進捗を集計
+  var result = [];
+  for (var mi = 1; mi < msRaw.length; mi++) {
+    var ms = {};
+    msHeaders.forEach(function(h, i) { ms[h] = msRaw[mi][i]; });
+
+    var msVer = String(ms.MsVer || '').trim();
+    if (!msVer) continue;
+
+    var edLogs  = allEditorLogs.filter(function(log) { return String(log.MsVer || '').trim() === msVer; });
+    var revLogs = allReviewLogs.filter(function(log) { return String(log.MsVer || '').trim() === msVer; });
+
+    var acceptedEditor   = edLogs.find(function(log) { return String(log.edtOk || '').trim() === 'ok'; });
+    var reviewerAccepted = revLogs.filter(function(log) { return String(log.revOk || '').trim() === 'ok'; }).length;
+    var reviewCompleted  = revLogs.filter(function(log) { return String(log.Received_At || '').trim() !== ''; }).length;
+
+    var status = determineProgressStatus(ms, edLogs, revLogs);
+
+    result.push({
+      MsVer:            msVer,
+      MS_ID:            String(ms.MS_ID     || '').trim(),
+      Ver_No:           String(ms.Ver_No    || '').trim(),
+      TitleJP:          String(ms.TitleJP   || '').trim(),
+      TitleEN:          String(ms.TitleEN   || '').trim(),
+      CA_Name:          String(ms.CA_Name   || '').trim(),
+      AuthorsJP:        String(ms.AuthorsJP || '').trim(),
+      MS_Type:          String(ms.MS_Type   || '').trim(),
+      Submitted_At:     fmt(ms.Submitted_At),
+      sentBackAt:       fmt(ms.sentBackAt   || ms.SentBackAt || ''),
+      score:            String(ms.score     || ms.Score      || '').trim(),
+      finalStatus:      String(ms.finalStatus || '').trim(),
+      eicKey:           String(ms.eicKey    || '').trim(),
+      editorName:       acceptedEditor ? String(acceptedEditor.Editor_Name || '').trim() : '',
+      reviewerAccepted: reviewerAccepted,
+      reviewCompleted:  reviewCompleted,
+      _progressStatus:  status
+    });
+  }
+
+  // アクティブな原稿を優先してソート
+  var sortOrder = [
+    'submitted', 'editor_requested', 'editor_assigned',
+    'reviewing', 'reviewed', 'final_review', 'eic_stopped',
+    'decision', 'in_production'
+  ];
+  result.sort(function(a, b) {
+    var ai = sortOrder.indexOf(a._progressStatus);
+    var bi = sortOrder.indexOf(b._progressStatus);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  return result;
+}
+
+/**
  * 担当編集者用データ取得ハンドラー
  */
 function getEditorManuscriptData(ssId, key) {

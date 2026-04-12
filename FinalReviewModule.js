@@ -105,8 +105,16 @@ function apiEicFinalAction(data) {
       'accepted':   dtRouteA.isAccepted ? 'yes' : 'no'
     });
     // コメントPDF添付（チェックボックスが有効かつ Google Doc ID が指定されている場合）
-    if (data.attachCommentFile && data.commentDocId) {
+    if (data.commentDocId) {
       try {
+        // {{EIC_SCORE}} プレースホルダーを実際の判定スコアに置換してから PDF 化
+        try {
+          var commentDoc = DocumentApp.openById(data.commentDocId);
+          commentDoc.getBody().replaceText('\\{\\{EIC_SCORE\\}\\}', data.decision || '');
+          commentDoc.saveAndClose();
+        } catch(eReplace) {
+          Logger.log('Score placeholder replacement failed (route a): ' + eReplace.message);
+        }
         var commentPdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
         commentPdfBlob.setName('Open-Comments-' + (msData.MsVer || '') + '.pdf');
         var commentWorkingFolder = driveFolderCache.getOrCreateFolder(
@@ -118,7 +126,9 @@ function apiEicFinalAction(data) {
           updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
             { 'reportCommentPdfUrl': savedCommentPdf.getUrl() });
         }
-        eicAttachmentBlobs.push(savedCommentPdf.getBlob().setName('Open-Comments-' + (msData.MsVer || '') + '.pdf'));
+        if (data.attachCommentFile) {
+          eicAttachmentBlobs.push(savedCommentPdf.getBlob().setName('Open-Comments-' + (msData.MsVer || '') + '.pdf'));
+        }
       } catch(e) {
         Logger.log('Comment PDF export failed (route a): ' + e.message);
       }

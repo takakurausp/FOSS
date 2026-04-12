@@ -82,14 +82,28 @@ function doGet(e) {
         template.role = 'unknown';
       }
     } else if (eicKey) {
-      // 編集委員長専用キー：著者キーと完全に分離されたキーでロールをサーバー側で検証
-      const msData = getManuscriptData('eic', eicKey);
-      if (msData) {
-        template.role = 'Editor-in-chief';
-        template.key = eicKey;
-        try { template.initialMsData = JSON.stringify(msData).replace(/<\//g, '<\\/'); } catch(e) {}
+      // eicAdminKey と一致する場合は全体進捗一覧ページへ
+      if (settings.eicAdminKey && eicKey === String(settings.eicAdminKey).trim()) {
+        template.role = 'Eic-Overview';
+        template.key  = eicKey;
+        try {
+          const ssIdForOverview = getSpreadsheetId();
+          const allMs = getEicAllMsData(ssIdForOverview);
+          template.initialMsData = JSON.stringify(allMs).replace(/<\//g, '<\\/');
+        } catch(eOverview) {
+          console.error('getEicAllMsData error:', eOverview);
+          template.initialMsData = '[]';
+        }
       } else {
-        template.role = 'unknown';
+        // 編集委員長専用キー：著者キーと完全に分離されたキーでロールをサーバー側で検証
+        const msData = getManuscriptData('eic', eicKey);
+        if (msData) {
+          template.role = 'Editor-in-chief';
+          template.key = eicKey;
+          try { template.initialMsData = JSON.stringify(msData).replace(/<\//g, '<\\/'); } catch(e) {}
+        } else {
+          template.role = 'unknown';
+        }
       }
     } else if (key) {
       // 著者キーは常に著者ロール（サーバー側で確証済み）

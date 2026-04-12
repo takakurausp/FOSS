@@ -26,8 +26,16 @@ function apiSubmitFeedback(data) {
 
   // 2. コメントPDFの生成・Drive保存（DB更新・メール送信より先に完了させる）
   const authorExtraAttachments = [];
-  if (data.attachCommentFile && data.commentDocId) {
+  if (data.commentDocId) {
     try {
+      // {{EIC_SCORE}} プレースホルダーを実際の判定スコアに置換してから PDF 化
+      try {
+        const commentDoc = DocumentApp.openById(data.commentDocId);
+        commentDoc.getBody().replaceText('\\{\\{EIC_SCORE\\}\\}', data.score || '');
+        commentDoc.saveAndClose();
+      } catch(eReplace) {
+        Logger.log('Score placeholder replacement failed: ' + eReplace.message);
+      }
       const pdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
       pdfBlob.setName('Open-Comments-' + msVer + '.pdf');
       const workingFolder = driveFolderCache.getOrCreateFolder(
@@ -39,7 +47,9 @@ function apiSubmitFeedback(data) {
         updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
           { 'reportCommentPdfUrl': savedPdf.getUrl() });
       }
-      authorExtraAttachments.push(savedPdf.getBlob().setName('Open-Comments-' + msVer + '.pdf'));
+      if (data.attachCommentFile) {
+        authorExtraAttachments.push(savedPdf.getBlob().setName('Open-Comments-' + msVer + '.pdf'));
+      }
     } catch(e) {
       Logger.log('Comment PDF export failed: ' + e.message);
     }

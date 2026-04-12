@@ -102,54 +102,114 @@ function createRecommendationReport(msData, data, ssId, settings) {
   // ─────────────────────────────────────────────────────────────
   const wordDoc  = DocumentApp.create('Open-Comments-' + msData.MsVer);
   const wordBody = wordDoc.getBody();
-  wordBody.setMarginTop(50).setMarginBottom(50).setMarginLeft(60).setMarginRight(60);
+  wordBody.setMarginTop(72).setMarginBottom(72).setMarginLeft(85).setMarginRight(85);
 
-  // ヘッダー
+  // スタイル定義
+  const styleTitle = {};
+  styleTitle[DocumentApp.Attribute.FONT_SIZE]        = 12;
+  styleTitle[DocumentApp.Attribute.BOLD]             = true;
+  styleTitle[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
+
+  const styleBody = {};
+  styleBody[DocumentApp.Attribute.FONT_SIZE]         = 10.5;
+  styleBody[DocumentApp.Attribute.BOLD]              = false;
+  styleBody[DocumentApp.Attribute.FONT_FAMILY]       = 'Arial';
+
+  const styleLabel = {};
+  styleLabel[DocumentApp.Attribute.FONT_SIZE]        = 10.5;
+  styleLabel[DocumentApp.Attribute.BOLD]             = true;
+  styleLabel[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
+
+  const styleSmall = {};
+  styleSmall[DocumentApp.Attribute.FONT_SIZE]        = 10;
+  styleSmall[DocumentApp.Attribute.BOLD]             = false;
+  styleSmall[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
+  styleSmall[DocumentApp.Attribute.FOREGROUND_COLOR] = '#555555';
+
+  // ─── ジャーナル名（タイトル、最大12pt）
   const titlePara = wordBody.appendParagraph(journalName);
-  titlePara.setHeading(DocumentApp.ParagraphHeading.TITLE);
+  titlePara.setAttributes(styleTitle);
   titlePara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  titlePara.setSpacingAfter(2);
 
-  const subPara = wordBody.appendParagraph('Open Comments / オープンコメント集');
-  subPara.setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
-  subPara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-
-  // 原稿情報
-  wordBody.appendParagraph('');
-  const infoStyle = {};
-  infoStyle[DocumentApp.Attribute.FONT_SIZE] = 10;
-  infoStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#555555';
-  const infoPara = wordBody.appendParagraph(
-    'Manuscript: ' + (msData.MsVer || '') + '    Date: ' + now
-  );
-  infoPara.setAttributes(infoStyle);
-  infoPara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  // ─── 発行日
+  const datePara = wordBody.appendParagraph(now);
+  datePara.setAttributes(styleSmall);
+  datePara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  datePara.setSpacingAfter(10);
 
   wordBody.appendHorizontalRule();
 
-  // 担当編集者のオープンコメント
-  const edHeading = wordBody.appendParagraph('Section 1: Responsible Editor\'s Comments / 担当編集者のコメント');
-  edHeading.setHeading(DocumentApp.ParagraphHeading.HEADING1);
-  const edMeta = wordBody.appendParagraph('Score: ' + (data.score || ''));
-  edMeta.setAttributes(infoStyle);
+  // ─── 原稿情報ブロック
   wordBody.appendParagraph('');
-  wordBody.appendParagraph(data.openComments || '(No comments)');
+  const msInfoStyle = Object.assign({}, styleBody);
 
-  // 査読者のオープンコメント
+  const msNoLine = wordBody.appendParagraph('原稿番号 / Manuscript No.: ' + (msData.MsVer || ''));
+  msNoLine.setAttributes(styleBody);
+
+  const titleJP = msData.TitleJP || '';
+  const titleEN = msData.TitleEN || '';
+  const titleText = titleJP && titleEN ? titleJP + '\n' + titleEN : (titleJP || titleEN || '');
+  const titleLine = wordBody.appendParagraph('論文タイトル / Title: ' + titleText);
+  titleLine.setAttributes(styleBody);
+
+  const authorsJP = msData.AuthorsJP || '';
+  const authorsEN = msData.AuthorsEN || '';
+  const hasFullAuthors = authorsJP || authorsEN;
+  const authorsText = hasFullAuthors
+    ? (authorsJP && authorsEN ? authorsJP + ' / ' + authorsEN : (authorsJP || authorsEN))
+    : (msData.CA_Name || '');
+  const authLabel = hasFullAuthors ? '著者 / Authors' : '責任著者 / Corresponding Author';
+  const authLine = wordBody.appendParagraph(authLabel + ': ' + authorsText);
+  authLine.setAttributes(styleBody);
+
+  const msTypeLine = wordBody.appendParagraph('論文種別 / Manuscript Type: ' + (msData.MS_Type || ''));
+  msTypeLine.setAttributes(styleBody);
+
+  const scoreLine = wordBody.appendParagraph('判定 / Decision: {{EIC_SCORE}}');
+  scoreLine.setAttributes(styleLabel);
+
+  // ─── 冒頭文
+  wordBody.appendParagraph('');
+  const introText =
+    'このたびはご投稿いただきありがとうございます。' +
+    'ご投稿原稿に対して査読を行いました結果、編集委員および査読者より以下のコメントが寄せられましたので、お知らせいたします。' +
+    '別途添付ファイルがございます場合は、あわせてご参照ください。' +
+    '改訂稿をご提出いただく場合は、各コメントに対する回答書を作成のうえ、改訂稿とともにご送付くださいますようお願いいたします。\n\n' +
+    'Thank you for submitting your manuscript to our journal. ' +
+    'Following a peer review, we are pleased to share the comments provided by the editors and reviewers below. ' +
+    'If any attachments are included separately, please refer to them as well. ' +
+    'Should you wish to submit a revised manuscript, please prepare a point-by-point response to the comments and submit it together with your revised manuscript.';
+  const introPara = wordBody.appendParagraph(introText);
+  introPara.setAttributes(styleBody);
+  introPara.setSpacingAfter(12);
+
+  wordBody.appendHorizontalRule();
+
+  // ─── Section 1: 担当編集者のオープンコメント
+  wordBody.appendParagraph('');
+  const edHeading = wordBody.appendParagraph('Section 1: Responsible Editor\'s Comments / 担当編集者のコメント');
+  edHeading.setAttributes(styleLabel);
+  edHeading.setSpacingAfter(4);
+
+  const edBody = wordBody.appendParagraph(data.openComments || '(No comments)');
+  edBody.setAttributes(styleBody);
+
+  // ─── Section 2: 査読者のオープンコメント
   wordBody.appendParagraph('');
   wordBody.appendParagraph('');
   const revSectionHeading = wordBody.appendParagraph('Section 2: Reviewer Comments / 査読者コメント');
-  revSectionHeading.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  revSectionHeading.setAttributes(styleLabel);
+  revSectionHeading.setSpacingAfter(4);
 
   reviewLogLines.forEach((rev, idx) => {
     wordBody.appendParagraph('');
     const revHead = wordBody.appendParagraph('Reviewer #' + (idx + 1));
-    revHead.setHeading(DocumentApp.ParagraphHeading.HEADING2);
-    const revMeta = wordBody.appendParagraph('Score: ' + (rev.Score || ''));
-    revMeta.setAttributes(infoStyle);
-    wordBody.appendParagraph('');
-    wordBody.appendParagraph(rev.openCommentsText || '(No comments)');
+    revHead.setAttributes(styleLabel);
+    revHead.setSpacingAfter(4);
+    const revBody = wordBody.appendParagraph(rev.openCommentsText || '(No comments)');
+    revBody.setAttributes(styleBody);
     if (idx < reviewLogLines.length - 1) {
-      wordBody.appendParagraph('');
       wordBody.appendParagraph('');
     }
   });

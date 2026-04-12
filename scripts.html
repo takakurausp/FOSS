@@ -126,6 +126,9 @@ function initUI() {
     case 'Managing-Editor':
       renderManagingEditorView(main);
       break;
+    case 'Eic-Overview':
+      renderEicOverview(main);
+      break;
     default:
       main.innerHTML = '<p class="error">不明なアクセスです。リンクを確認してください。</p>';
   }
@@ -2172,6 +2175,81 @@ async function submitSubmission() {
     btn.style.background = '';
     btn.style.cursor = '';
   }
+}
+
+/**
+ * EIC全体管理: 処理中原稿 進捗一覧ページ
+ */
+function renderEicOverview(container) {
+  var main = container || document.getElementById('main-content');
+  var msList = Array.isArray(INITIAL_MS_DATA) ? INITIAL_MS_DATA : [];
+
+  var statusLabels = {
+    submitted:        { label: '受付済み',      color: '#6b7280', bg: '#f3f4f6' },
+    editor_requested: { label: '編集者依頼中',   color: '#d97706', bg: '#fef3c7' },
+    editor_assigned:  { label: '編集者決定',     color: '#2563eb', bg: '#dbeafe' },
+    reviewing:        { label: '査読中',         color: '#7c3aed', bg: '#ede9fe' },
+    reviewed:         { label: '査読完了',       color: '#059669', bg: '#d1fae5' },
+    final_review:     { label: '最終確認中',     color: '#dc2626', bg: '#fee2e2' },
+    decision:         { label: '判定通知済',     color: '#374151', bg: '#e5e7eb' },
+    in_production:    { label: '印刷工程中',     color: '#1e40af', bg: '#bfdbfe' },
+    eic_stopped:      { label: '審査停止',       color: '#9f1239', bg: '#ffe4e6' }
+  };
+
+  var baseUrl = window.location.href.split('?')[0];
+
+  var rows = msList.map(function(ms) {
+    var st = statusLabels[ms._progressStatus] || { label: ms._progressStatus || '-', color: '#374151', bg: '#f3f4f6' };
+    var title  = ms.TitleJP || ms.TitleEN || '(タイトル未設定)';
+    var author = ms.CA_Name || ms.AuthorsJP || '-';
+    var editorCell  = ms.editorName || '<em style="color:#9ca3af">未決定</em>';
+    var reviewCell  = (ms._progressStatus === 'reviewing' || ms._progressStatus === 'reviewed')
+      ? (ms.reviewCompleted + '/' + ms.reviewerAccepted + '人')
+      : '-';
+    var eicLinkCell = ms.eicKey
+      ? '<a href="' + baseUrl + '?eicKey=' + ms.eicKey + '" target="_blank" style="color:#2563eb;text-decoration:underline">開く</a>'
+      : '-';
+
+    return '<tr style="border-bottom:1px solid #e2e8f0">' +
+      '<td style="padding:8px 10px;white-space:nowrap;font-weight:600">' + (ms.MsVer || '') + '</td>' +
+      '<td style="padding:8px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (ms.TitleEN || '') + '">' + title + '</td>' +
+      '<td style="padding:8px 10px;white-space:nowrap">' + author + '</td>' +
+      '<td style="padding:8px 10px;white-space:nowrap;font-size:0.8em">' + (ms.MS_Type || '-') + '</td>' +
+      '<td style="padding:8px 10px;white-space:nowrap"><span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.78em;background:' + st.bg + ';color:' + st.color + ';font-weight:700">' + st.label + '</span></td>' +
+      '<td style="padding:8px 10px;white-space:nowrap">' + editorCell + '</td>' +
+      '<td style="padding:8px 10px;white-space:nowrap;text-align:center">' + reviewCell + '</td>' +
+      '<td style="padding:8px 10px;white-space:nowrap;font-size:0.82em;color:#6b7280">' + (ms.Submitted_At || '-') + '</td>' +
+      '<td style="padding:8px 10px;white-space:nowrap">' + eicLinkCell + '</td>' +
+      '</tr>';
+  }).join('');
+
+  var noDataMsg = msList.length === 0
+    ? '<tr><td colspan="9" style="text-align:center;padding:2rem;color:#9ca3af">原稿データがありません</td></tr>'
+    : '';
+
+  main.innerHTML =
+    '<div style="padding:1.25rem">' +
+    '<h2 style="font-size:1.1rem;font-weight:700;margin:0 0 0.25rem">📋 処理中原稿 進捗一覧 / Manuscript Progress Overview</h2>' +
+    '<p style="font-size:0.85rem;color:#6b7280;margin:0 0 1.25rem">全 ' + msList.length + ' 件</p>' +
+    '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:0.875rem">' +
+    '<thead>' +
+    '<tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">' +
+    '<th style="padding:8px 10px;text-align:left;white-space:nowrap">原稿番号</th>' +
+    '<th style="padding:8px 10px;text-align:left">タイトル</th>' +
+    '<th style="padding:8px 10px;text-align:left;white-space:nowrap">責任著者</th>' +
+    '<th style="padding:8px 10px;text-align:left;white-space:nowrap">種別</th>' +
+    '<th style="padding:8px 10px;text-align:left;white-space:nowrap">ステータス</th>' +
+    '<th style="padding:8px 10px;text-align:left;white-space:nowrap">担当編集者</th>' +
+    '<th style="padding:8px 10px;text-align:center;white-space:nowrap">査読状況</th>' +
+    '<th style="padding:8px 10px;text-align:left;white-space:nowrap">投稿日</th>' +
+    '<th style="padding:8px 10px;text-align:left">操作</th>' +
+    '</tr>' +
+    '</thead>' +
+    '<tbody>' + (rows || noDataMsg) + '</tbody>' +
+    '</table>' +
+    '</div>' +
+    '</div>';
 }
 
 /**
