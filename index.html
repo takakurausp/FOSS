@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <?!= include('styles'); ?>
+  </head>
+  <body>
+    <div id="app" class="container">
+      <header>
+        <h1 id="journal-name"><?= journalName ?></h1>
+        <div id="role-badge" class="badge"></div>
+      </header>
+      
+      <main id="main-content">
+        <!-- ロールに応じたコンテンツがここに入る -->
+        <div id="loader" class="loader">読み込み中...</div>
+      </main>
+      
+      <footer>
+        <p>&copy; <?= new Date().getFullYear() ?> <?= journalName ?></p>
+      </footer>
+    </div>
+
+    <!-- テンプレート変数をJSに渡す -->
+    <script>
+      const USER_ROLE = "<?= role ?>";
+      const USER_KEY = "<?= key ?>";
+      let SHOW_RESPONSE_FORM = "<?= showResponseForm ?>" === "true";
+      const IS_TEST_MODE = "<?= isTestMode ?>" === "true";
+      const INITIAL_MS_DATA = <?!= initialMsData ?>;
+      const INITIAL_SETTINGS = <?!= initialSettings ?>;
+
+      // デバッグ用: テンプレート変数の値を表示
+      console.log('Template variables:');
+      console.log('USER_ROLE:', USER_ROLE);
+      console.log('USER_KEY:', USER_KEY);
+      console.log('SHOW_RESPONSE_FORM:', SHOW_RESPONSE_FORM);
+      console.log('IS_TEST_MODE:', IS_TEST_MODE, 'raw value: "<?= isTestMode ?>"');
+    </script>
+    <?!= include('scripts'); ?>
+  </body>
+</html>

@@ -1,0 +1,412 @@
+<style>
+/* プレミアムでモダンなデザインシステム */
+:root {
+  --primary: #2563eb;
+  --secondary: #64748b;
+  --accent: #f59e0b;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #1e293b;
+  --border: #e2e8f0;
+  --success: #10b981;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0;
+}
+
+.badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background-color: var(--secondary);
+  color: white;
+  text-transform: capitalize;
+}
+
+main {
+  background-color: var(--card);
+  padding: 2.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.form-section {
+  margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-section:last-child {
+  border-bottom: none;
+}
+
+.form-section h3 {
+  font-size: 1.125rem;
+  color: var(--primary);
+  margin-bottom: 1.5rem;
+  border-left: 4px solid var(--primary);
+  padding-left: 0.75rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 0.9375rem;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: 0.5rem;
+  background-color: #ffffff;
+  font-family: inherit;
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.hint {
+  font-size: 0.8125rem;
+  color: var(--secondary);
+  margin-top: 0.25rem;
+}
+
+button {
+  background-color: var(--primary);
+  color: white;
+  padding: 0.875rem 2rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-weight: 700;
+  font-size: 1.125rem;
+  cursor: pointer;
+  width: 100%;
+  transition: transform 0.1s, background-color 0.2s;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  background-color: var(--secondary);
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled) {
+  background-color: #1d4ed8;
+}
+
+.btn-archive {
+  background-color: transparent !important;
+  color: var(--secondary) !important;
+  border: 1px solid var(--border) !important;
+  padding: 0.4rem 0.75rem !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  width: auto !important;
+  border-radius: 6px !important;
+  transition: all 0.2s;
+}
+
+.btn-archive:hover:not(:disabled) {
+  background-color: #f1f5f9 !important;
+  border-color: var(--secondary) !important;
+  color: var(--text) !important;
+}
+
+.success-message {
+  text-align: center;
+  padding: 2rem;
+}
+
+.success-message h2 {
+  color: var(--success);
+}
+
+/* Status Cards */
+.status-card {
+  background-color: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.badge {
+  background-color: var(--primary);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.detail-table th {
+  text-align: left;
+  padding: 0.75rem;
+  width: 30%;
+  border-bottom: 1px solid var(--border);
+  color: var(--secondary);
+  font-size: 0.875rem;
+}
+
+.detail-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+
+.abstract-cell {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow-y: auto;
+  display: block;
+  padding: 0.5rem 0 !important;
+  border-bottom: none !important;
+}
+
+.error {
+  color: #dc2626;
+  background-color: #fef2f2;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #fecaca;
+}
+
+/* スクロール可能なテーブルラッパー */
+.responsive-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ========================================
+   モバイル対応 (スマートフォン最適化)
+   Mobile Responsive Styles
+   ======================================== */
+@media (max-width: 640px) {
+  body {
+    font-size: 0.9375rem;
+  }
+
+  .container {
+    margin: 0.75rem auto;
+    padding: 0 0.5rem;
+  }
+
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  h1 {
+    font-size: 1.2rem;
+  }
+
+  main {
+    padding: 1.25rem 1rem;
+    border-radius: 0.75rem;
+  }
+
+  .form-section {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+  }
+
+  .status-card {
+    padding: 1rem;
+    margin-top: 1rem;
+  }
+
+  .status-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  /* detail-table: th/td をスタック表示 */
+  .detail-table,
+  .detail-table thead,
+  .detail-table tbody,
+  .detail-table th,
+  .detail-table td,
+  .detail-table tr {
+    display: block;
+    width: 100%;
+  }
+
+  .detail-table tr {
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .detail-table th {
+    background: #f1f5f9;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+    color: var(--secondary);
+    border-bottom: none;
+    width: 100%;
+  }
+
+  .detail-table td {
+    padding: 0.4rem 0.75rem 0.75rem;
+    border-bottom: none;
+  }
+
+  /* 査読者・編集者テーブル: 横スクロール */
+  .responsive-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 1rem;
+  }
+
+  .responsive-table-wrap table {
+    border: none;
+    min-width: 480px;
+  }
+
+  button {
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="file"],
+  select,
+  textarea {
+    font-size: 0.9375rem;
+  }
+}
+
+/* モーダル（プレビュー用）のスタイル */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: white;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  border-radius: 1rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  background-color: #f1f5f9;
+}
+
+.modal-footer {
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  background: white;
+}
+
+.email-preview-container {
+  background: white;
+  padding: 0;
+  border-radius: 4px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.btn-secondary {
+  background-color: var(--secondary) !important;
+}
+</style>

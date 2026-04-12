@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Mode Demo</title>
+    <style>
+        .status-card {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        .form-section {
+            margin-bottom: 2rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+            color: #374151;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+        .hint {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Mode Implementation Demo</h1>
+    
+    <div class="status-card">
+        <h2>テストモードの動作説明</h2>
+        
+        <h3>テストモードの有効化方法:</h3>
+        <p>URLに <code>?test=true</code> パラメータを追加してアクセスします。</p>
+        <p>例: <code>https://script.google.com/.../exec?test=true</code></p>
+        
+        <h3>テストモードの動作:</h3>
+        <ul>
+            <li>新規投稿画面が表示されます（通常は制限されています）</li>
+            <li>フォーム項目があらかじめ入力されています</li>
+            <li>責任著者のメールアドレスは空欄です</li>
+            <li>共著者のメールアドレスは <code>example.com</code> ドメインを使用</li>
+        </ul>
+        
+        <h3>実装されているテストデータ:</h3>
+        <div style="background:#f3f4f6; padding:1rem; border-radius:0.5rem; margin:1rem 0;">
+            <pre><code>const testData = {
+  authorName: 'テスト 太郎',
+  authorEmail: '', // 責任著者は空欄
+  authorAffiliation: 'テスト大学 合理学研究科',
+  authorAddress: '東京都千代田区1-1-1',
+  authorsJp: 'テスト太郎、サンプル次郎',
+  authorsEn: 'Taro Test, Jiro Sample',
+  ccEmails: 'jiro.sample@example.com, saburo.test@example.com', // example.com ドメイン
+  titleJp: '【テスト投稿】システムの動作確認用タイトル',
+  titleEn: '[Test Submission] Title for system verification',
+  runningTitle: 'システム検証用ランニングタイトル',
+  abstractJp: 'これはシステムの新規投稿フローをテストするための要旨です。...',
+  abstractEn: 'This is a test abstract for the new submission flow. ...',
+  letterToEditor: '編集委員長殿、本原稿の査読をお願い申し上げます。'
+};</code></pre>
+        </div>
+        
+        <h3>コード実装箇所:</h3>
+        <ol>
+            <li><strong>Code.js (行42)</strong>: <code>template.isTestMode = (e.parameter.test === 'true') ? 'true' : 'false';</code></li>
+            <li><strong>index.html (行30)</strong>: <code>const IS_TEST_MODE = "&lt;?= isTestMode ?&gt;" === "true";</code></li>
+            <li><strong>scripts.html (行549-557)</strong>: テストモードチェックと制限メッセージ</li>
+            <li><strong>scripts.html (行560-574)</strong>: テストデータ定義</li>
+            <li><strong>scripts.html (行579-769)</strong>: テストモード用フォーム表示</li>
+        </ol>
+        
+        <h3>テストモードの確認方法:</h3>
+        <p>実際のGoogle Apps Scriptアプリに <code>?test=true</code> パラメータを付けてアクセスし、以下の点を確認:</p>
+        <ol>
+            <li>新規投稿画面が表示される（通常モードでは制限メッセージ）</li>
+            <li>フォーム項目にテストデータが入力されている</li>
+            <li>責任著者メールアドレスが空欄</li>
+            <li>共著者メールアドレスが <code>example.com</code> ドメイン</li>
+        </ol>
+    </div>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Review Materials Panel</title>
+</head>
+<body>
+    <h1>Test Review Materials Panel</h1>
+    
+    <div id="test-results"></div>
+    
+    <script>
+        function buildReviewMaterialsPanel(submittedUrl, reviewMaterialsUrl) {
+            let submittedLink = '';
+            let materialsLink = '';
+            
+            if (submittedUrl) {
+                submittedLink = `<a href="${submittedUrl}" target="_blank" rel="noopener noreferrer">【閲覧専用】投稿原稿フォルダ / Submitted Files Folder</a>`;
+            }
+            
+            if (reviewMaterialsUrl) {
+                materialsLink = `<a href="${reviewMaterialsUrl}" target="_blank" rel="noopener noreferrer">【閲覧専用】審査票他・作業フォルダ / Review Materials Folder</a>`;
+            }
+            
+            if (!submittedLink && !materialsLink) return '';
+            
+            return `
+                <div style="margin: 1.5rem 0; padding: 1rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <p style="margin:0 0 0.5rem;"><strong>原稿・査読資料の確認 / Review Materials:</strong></p>
+                    <ul style="margin-top: 0.5rem; line-height: 1.6;">
+                        ${submittedLink ? `<li>${submittedLink}</li>` : ''}
+                        ${materialsLink ? `<li>${materialsLink}</li>` : ''}
+                    </ul>
+                </div>`;
+        }
+        
+        // Test cases
+        const testCases = [
+            {
+                name: "Both URLs present",
+                submittedUrl: "https://drive.google.com/drive/folders/test1",
+                reviewMaterialsUrl: "https://drive.google.com/drive/folders/test2"
+            },
+            {
+                name: "Only submitted URL",
+                submittedUrl: "https://drive.google.com/drive/folders/test1",
+                reviewMaterialsUrl: ""
+            },
+            {
+                name: "Only review materials URL",
+                submittedUrl: "",
+                reviewMaterialsUrl: "https://drive.google.com/drive/folders/test2"
+            },
+            {
+                name: "No URLs",
+                submittedUrl: "",
+                reviewMaterialsUrl: ""
+            }
+        ];
+        
+        const resultsDiv = document.getElementById('test-results');
+        
+        testCases.forEach(testCase => {
+            const panel = buildReviewMaterialsPanel(testCase.submittedUrl, testCase.reviewMaterialsUrl);
+            const testDiv = document.createElement('div');
+            testDiv.innerHTML = `
+                <h3>Test: ${testCase.name}</h3>
+                <p>Submitted URL: ${testCase.submittedUrl || '(empty)'}</p>
+                <p>Review Materials URL: ${testCase.reviewMaterialsUrl || '(empty)'}</p>
+                <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
+                    ${panel || '<em>No panel generated (empty string)</em>'}
+                </div>
+                <hr>
+            `;
+            resultsDiv.appendChild(testDiv);
+        });
+    </script>
+</body>
+</html>

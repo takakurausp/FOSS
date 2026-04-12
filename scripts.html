@@ -1,0 +1,2199 @@
+<script>
+/**
+ * scripts.html - クライアント側ロジック
+ */
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 初期設定：doGetで埋め込まれたデータを優先使用（サーバー呼び出しを省略）
+  if (typeof INITIAL_SETTINGS !== 'undefined' && INITIAL_SETTINGS && INITIAL_SETTINGS.Journal_Name) {
+    document.getElementById('journal-name').textContent = INITIAL_SETTINGS.Journal_Name || 'Submission System';
+    if (USER_ROLE === 'New-Author') {
+      google.script.run
+        .withSuccessHandler(types => { window.MANUSCRIPT_TYPES = types; initUI(); })
+        .withFailureHandler(err => { console.error('getManuscriptTypes error:', err); initUI(); })
+        .getManuscriptTypes();
+    } else {
+      initUI();
+    }
+    return;
+  }
+
+  // フォールバック: サーバーから設定を取得（埋め込みデータがない場合）
+  google.script.run
+    .withSuccessHandler(settings => {
+      document.getElementById('journal-name').textContent = settings.Journal_Name || 'Submission System';
+      if (USER_ROLE === 'New-Author') {
+        google.script.run
+          .withSuccessHandler(types => { window.MANUSCRIPT_TYPES = types; initUI(); })
+          .withFailureHandler(err => { console.error('getManuscriptTypes error:', err); initUI(); })
+          .getManuscriptTypes();
+      } else {
+        initUI();
+      }
+    })
+    .withFailureHandler(err => {
+      console.error('getSettings error:', err);
+      document.getElementById('main-content').innerHTML = '<p class="error">設定の読み込みに失敗しました: ' + err.message + '</p>';
+    })
+    .getSettings();
+});
+
+/**
+ * スコア文字列から色コードを返す共通ヘルパー
+ */
+function _scoreColor(s) {
+  const v = (s || '').toLowerCase();
+  if (v.includes('accept')) return '#059669';
+  if (v.includes('reject')) return '#dc2626';
+  if (v.includes('major'))  return '#d97706';
+  if (v.includes('minor'))  return '#2563eb';
+  return '#475569';
+}
+
+/**
+ * 送信済みコメントを表示する共通ブロック（青＋黄のボックス）
+ */
+function _buildSubmittedCommentsBlock(openText, confidentialText) {
+  const open = openText || '(なし / none)';
+  const conf = confidentialText || '(なし / none)';
+  return `
+    <div style="margin-bottom:1rem;">
+      <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">著者へのコメント / Open Comments</p>
+      <div style="white-space:pre-wrap; background:#f0f7ff; padding:0.875rem; border-radius:6px; border:1px solid #bfdbfe; font-size:0.875rem; line-height:1.7; color:#1e293b;">${open}</div>
+    </div>
+    <div>
+      <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">🔒 コンフィデンシャルコメント / Confidential Comments</p>
+      <div style="white-space:pre-wrap; background:#fffbeb; padding:0.875rem; border-radius:6px; border:1px solid #fcd34d; font-size:0.875rem; line-height:1.7; color:#1e293b;">${conf}</div>
+    </div>`;
+}
+
+/**
+ * 最終判定バナーを表示する共通ブロック（査読者・担当編集者・編集幹事・著者(path2)向け）
+ * eicFinalDecision (path2) または score (path1) が存在する場合に表示
+ */
+function _buildFinalDecisionBanner(ms) {
+  const decision = (ms.eicFinalDecision || ms.score || '').trim();
+  if (!decision) return '';
+  const inProduction = (ms.finalStatus || '') === 'in_production';
+  const header = inProduction
+    ? '✅ 受理・印刷工程中 / Accepted – In Production'
+    : '✅ 最終判定通知済み / Final Decision Sent';
+  return `<div style="margin-top:1.5rem; padding:1rem 1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px; display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+      <span style="font-weight:700; color:#15803d; font-size:0.95rem;">${header}</span>
+      <span style="background:${_scoreColor(decision)}; color:#fff; font-size:0.82rem; font-weight:700; padding:3px 14px; border-radius:12px;">${decision}</span>
+    </div>`;
+}
+
+/**
+ * doGetで埋め込まれた初期データを消費する（初回レンダリング時のみ使用）。
+ * 2回目以降の呼び出し（送信後の再描画など）はnullを返しサーバー呼び出しにフォールバックする。
+ */
+function _consumePreloadedData() {
+  if (typeof INITIAL_MS_DATA !== 'undefined' && INITIAL_MS_DATA !== null && !window._preloadConsumed) {
+    window._preloadConsumed = true;
+    return INITIAL_MS_DATA;
+  }
+  return null;
+}
+
+/**
+ * ロールに基づいたUIの初期化
+ */
+function initUI() {
+  const main = document.getElementById('main-content');
+  const badge = document.getElementById('role-badge');
+  badge.textContent = USER_ROLE;
+
+  if (SHOW_RESPONSE_FORM) {
+    renderResponseForm(main);
+    return;
+  }
+
+  switch (USER_ROLE) {
+    case 'New-Author':
+      renderNewAuthorForm(main);
+      break;
+    case 'Author':
+    case 'Editor-in-chief':
+      renderAuthorView(main);
+      break;
+    case 'Editor':
+      renderEditorView(main);
+      break;
+    case 'Reviewer':
+      renderReviewerView(main);
+      break;
+    case 'Managing-Editor':
+      renderManagingEditorView(main);
+      break;
+    default:
+      main.innerHTML = '<p class="error">不明なアクセスです。リンクを確認してください。</p>';
+  }
+}
+
+/**
+ * 受諾/拒否の回答フォーム
+ */
+function renderResponseForm(container) {
+  container.innerHTML = '<div id="response-content" class="loader">読み込み中...</div>';
+  
+  const _handleResponse = ms => {
+      const content = document.getElementById('response-content');
+      if (!ms) {
+        content.innerHTML = '<p class="error">データが見つかりませんでした。</p>';
+        return;
+      }
+      content.className = '';
+      
+      content.innerHTML = `
+        <div class="status-card">
+          <h2>依頼への回答 / Response to Invitation</h2>
+          ${renderManuscriptHeader(ms)}
+            ${renderManuscriptInfoTable(ms, {
+             showVersion: false,
+             showType: true,
+             showAuthors: true,
+             showAbstract: false,
+             showSubmittedAt: false,
+             showCorrespondingAuthor: true,
+             showDeadline: true
+           }).replace('</table>', '')}
+          ${USER_ROLE !== 'Reviewer' ? `
+          <tr>
+            <th>原稿ファイル / Submitted Files</th>
+            <td><a href="${ms.submittedFolderUrl || ms.folderUrl}" target="_blank">閲覧用フォルダを開く / Open Shared Folder</a></td>
+          </tr>` : ''}
+          </table>
+          ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
+          <hr style="margin:2rem 0;">
+          <form id="response-form" onsubmit="event.preventDefault(); submitResponse();">
+            <div class="form-group">
+              <label>回答 / Your Response *</label>
+              <div style="display:flex; gap:20px; margin-top:0.5rem;">
+                <label style="font-weight:normal;"><input type="radio" name="answer" value="ok" required> 承諾 / Accept</label>
+                <label style="font-weight:normal;"><input type="radio" name="answer" value="ng" required> 辞退 / Decline</label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>メッセージ / Message to Editor</label>
+              <textarea id="response-message" rows="4" placeholder="メッセージがあれば入力してください"></textarea>
+            </div>
+            <button type="submit" id="submit-response-btn">回答を送信 / Submit Response</button>
+          </form>
+        </div>
+      `;
+  };
+  const _rp = _consumePreloadedData();
+  if (_rp !== null) { _handleResponse(_rp); return; }
+  google.script.run
+    .withSuccessHandler(_handleResponse)
+    .withFailureHandler(err => { const c = document.getElementById('response-content'); if (c) { c.className = ''; c.innerHTML = '<p class="error">データ取得エラー: ' + err.message + '</p>'; } })
+    .getManuscriptData(USER_ROLE, USER_KEY);
+}
+
+function submitResponse() {
+  const answer = document.querySelector('input[name="answer"]:checked').value;
+  const message = document.getElementById('response-message').value;
+  const btn = document.getElementById('submit-response-btn');
+  
+  btn.disabled = true;
+  btn.textContent = '送信中... / Sending...';
+
+  google.script.run
+    .withSuccessHandler(result => {
+      if (answer === 'ok') {
+        // SPAなのでリロードせず、フラグを折って再初期化
+        SHOW_RESPONSE_FORM = false;
+        document.getElementById('main-content').innerHTML = '<div class="loader">読み込み中...</div>';
+        initUI();
+      } else {
+        // 集中管理
+        const main = document.getElementById('main-content');
+        main.innerHTML = `
+          <div class="success-message" style="text-align:center; padding: 3rem 1rem;">
+            <div style="font-size: 4rem; margin-bottom: 1rem;">🙏</div>
+            <h2 style="margin-bottom: 1rem;">今回はお引き受けいただけないとの旨を承りました</h2>
+            <p>We have been informed that you are unable to take charge of this manuscript.</p>
+            <button onclick="window.close()" style="margin-top: 1.5rem; background:#64748b; color:white; border:none; padding:10px 20px; border-radius:6px; cursor:pointer;">ウィンドウを閉じる / Close Window</button>
+            <p style="margin-top: 1rem; font-size: 0.82rem; color: #94a3b8;">不具合で閉じない場合は、ブラウザの「×」で閉じてください。</p>
+          </div>
+        `;
+      }
+    })
+    .withFailureHandler(err => {
+      alert('エラー: ' + err);
+      btn.disabled = false;
+      btn.textContent = '回答を送信 / Submit Response';
+    })
+    .apiSubmitInvitationResponse(USER_ROLE, USER_KEY, answer, message);
+}
+
+/**
+ * 原稿・査読資料パネルHTMLを生成
+ */
+function buildReviewMaterialsPanel(submittedUrl, reviewMaterialsUrl) {
+  let submittedLink = '';
+  let materialsLink = '';
+  if (submittedUrl) submittedLink = `<a href="${submittedUrl}" target="_blank">【閲覧専用】投稿原稿フォルダ / Submitted Files Folder</a>`;
+  if (reviewMaterialsUrl) materialsLink = `<a href="${reviewMaterialsUrl}" target="_blank">【閲覧専用】審査票他・作業フォルダ / Review Materials Folder</a>`;
+  if (!submittedLink && !materialsLink) return '';
+  return `
+    <div style="margin: 1.5rem 0; padding: 1rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+      <p style="margin:0 0 0.5rem;"><strong>原稿・査読資料の確認 / Review Materials:</strong></p>
+      <ul style="margin-top: 0.5rem; line-height: 1.8;">
+        ${submittedLink ? `<li>${submittedLink}</li>` : ''}
+        ${materialsLink ? `<li>${materialsLink}</li>` : ''}
+      </ul>
+    </div>`;
+}
+
+/**
+ * 原稿ヘッダーを表示
+ */
+function renderManuscriptHeader(ms) {
+  const titleJP = ms.TitleJP || '';
+  const titleEN = ms.TitleEN || '';
+  if (!titleJP && !titleEN) return '';
+  const archiveButton = (USER_ROLE === 'Editor-in-chief' || USER_ROLE === 'Managing-Editor')
+    ? `<button onclick="handleArchiveClick('${ms.MS_ID}', '${ms.key}')" class="btn-archive">アーカイブ / Archive</button>`
+    : '';
+  return `
+    <div class="status-header">
+      <div style="flex:1;">
+        <h3 style="margin:0; font-size:1.1rem; font-weight:600;">${titleJP}</h3>
+        ${titleEN ? `<h4 style="margin:0.2rem 0 0 0; font-size:1.1rem; font-weight:600;">${titleEN}</h4>` : ''}
+      </div>
+      <div style="margin-left: 1rem;">${archiveButton}</div>
+    </div>`;
+}
+
+/**
+ * 原稿情報テーブルを表示
+ */
+function renderManuscriptInfoTable(ms, options = {}) {
+  const { showVersion = false, showType = true, showAuthors = false, showAbstract = false, showSubmittedAt = true, showCorrespondingAuthor = true, showDeadline = false } = options;
+  const msVer = ms.MsVer || '1';
+  let rows = `<tr><th>原稿番号 / MS ID</th><td>${msVer}</td></tr>`;
+  if (showType) rows += `<tr><th>原稿種別 / Type</th><td>${ms.MS_Type || '(なし)'}</td></tr>`;
+  if (showSubmittedAt) rows += `<tr><th>投稿日時 / Submitted</th><td>${ms.Submitted_At || '(なし)'}</td></tr>`;
+  if (showCorrespondingAuthor) rows += `<tr><th>責任著者 / Author</th><td>${ms.CA_Name || ''} (${ms.CA_Email || ''})</td></tr>`;
+  if (showAuthors) {
+    if (ms.AuthorsJP) rows += `<tr><th>著者一覧 (日)</th><td>${ms.AuthorsJP}</td></tr>`;
+    if (ms.AuthorsEN) rows += `<tr><th>著者一覧 (英)</th><td>${ms.AuthorsEN}</td></tr>`;
+  }
+  if (showDeadline && ms.Review_Deadline) rows += `<tr><th>査読期限 / Deadline</th><td>${ms.Review_Deadline}</td></tr>`;
+  return `<table class="detail-table">${rows}</table>`;
+}
+
+/**
+ * 折りたたみ可能なアブストラクトセクション
+ */
+function renderCollapsibleAbstract(abstractJP, abstractEN) {
+  if (!abstractJP && !abstractEN) return '';
+  const id = 'abstract-' + Date.now();
+  return `
+    <div style="margin-top: 1.5rem;">
+      <button type="button" onclick="toggleAbstract('${id}')" style="background:none; border:1px solid #d1d5db; border-radius:6px; padding:0.5rem 1rem; cursor:pointer; color:#374151;">
+        <span id="${id}-icon">▶</span> <span id="${id}-label">要旨を見る / View Abstract</span>
+      </button>
+      <div id="${id}" style="display:none; margin-top:1rem; padding:1.25rem; background:#f9fafb; border-radius:8px; border:1px solid #e5e7eb;">
+        ${abstractJP ? `<div><h4 style="margin:0 0 0.5rem; font-size:0.9rem; color:#4b5563;">要旨 (日本語)</h4><div class="abstract-cell">${abstractJP}</div></div>` : ''}
+        ${abstractEN ? `<div style="margin-top:1rem;"><h4 style="margin:0 0 0.5rem; font-size:0.9rem; color:#4b5563;">Abstract (English)</h4><div class="abstract-cell">${abstractEN}</div></div>` : ''}
+      </div>
+    </div>`;
+}
+
+/**
+ * 進捗タイムラインHTML生成
+ */
+function buildProgressTimeline(currentStatus) {
+  if (currentStatus === 'eic_stopped') {
+    return `<div style="padding:0.75rem 1rem; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-weight:600;">⛔ 審査停止 / Review Stopped by EIC</div>`;
+  }
+  const steps = [
+    { key: 'submitted',        en: 'Received',  ja: '受付済み' },
+    { key: 'editor_requested', en: 'Assigning', ja: 'エディター選定中' },
+    { key: 'editor_assigned',  en: 'Assigned',  ja: 'エディター決定' },
+    { key: 'reviewing',        en: 'Reviewing', ja: '査読中' },
+    { key: 'reviewed',         en: 'Reviewed',  ja: '査読完了' },
+    { key: 'final_review',     en: 'Final Review', ja: '最終確認中' },
+    { key: 'decision',         en: 'Decision',  ja: '判定通知済' }
+  ];
+  // 'in_production' はタイムライン上 'decision' と同等（印刷工程中 = 判定通知済の完了形）
+  const displayStatus = currentStatus === 'in_production' ? 'decision' : currentStatus;
+  const currentIdx = Math.max(0, steps.findIndex(s => s.key === displayStatus));
+  const parts = steps.map((step, idx) => {
+    const done = idx < currentIdx;
+    const active = idx === currentIdx;
+    const color = done ? '#059669' : active ? '#2563eb' : '#e2e8f0';
+    return `
+      <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:70px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;">${done ? '✓' : idx + 1}</div>
+        <div style="margin-top:5px;text-align:center;font-size:0.65rem;color:${active?'#1e40af':'#64748b'};font-weight:${active?'700':'400'};">${step.ja}<br>${step.en}</div>
+      </div>
+      ${idx < steps.length - 1 ? `<div style="flex:1;height:2px;background:${done?'#059669':'#e2e8f0'};margin-top:14px;"></div>` : ''}
+    `;
+  });
+  return `<div style="display:flex;padding:1rem 0;overflow-x:auto;">${parts.join('')}</div>`;
+}
+
+/**
+ * 著者・委員長用共通ビュー
+ */
+function renderAuthorView(container) {
+  container.innerHTML = '<h2>投稿情報 / Submission Details</h2><div id="status-content" class="loader">読み込み中...</div>';
+  const serverRole = USER_ROLE === 'Editor-in-chief' ? 'eic' : USER_ROLE;
+
+  const _handleAuthor = ms => {
+      const content = document.getElementById('status-content');
+      if (!ms) { content.innerHTML = '<p class="error">データが見つかりませんでした。</p>'; return; }
+      content.className = '';
+
+      const resubmissionBlock = USER_ROLE === 'Author' && ms.sentBackAt && (ms.accepted !== 'yes' || ms._allowsResubmit) ? `
+        <div class="status-card" style="margin-top:2rem; border:2px solid ${ms._hasNewerVersion ? '#94a3b8' : 'var(--success)'}; background:${ms._hasNewerVersion ? '#f8fafc' : '#fff'};">
+          <h3 style="margin-bottom:0.75rem; color:${ms._hasNewerVersion ? '#64748b' : 'inherit'};">修正原稿の再投稿 / Resubmission</h3>
+          ${ms._hasNewerVersion ? `
+          <div style="display:flex; align-items:center; gap:0.6rem; padding:0.75rem 1rem; background:#e2e8f0; border-radius:6px; color:#475569; font-size:0.9rem;">
+            <span style="font-size:1.25rem;">✅</span>
+            <div>
+              <strong>再投稿済みです / Already Resubmitted</strong><br>
+              <span style="font-size:0.85rem;">修正原稿の再投稿は受け付けられました。新しい審査の状況はメールでお知らせします。<br>Your revised manuscript has been received. You will be notified by email about the review progress.</span>
+            </div>
+          </div>` : `
+          <p style="margin-bottom:0.75rem; line-height:1.7;">
+            判定に基づき、修正した原稿を再投稿してください。<br>
+            <strong>修正した原稿と、前回の査読者・編集者の指摘事項に対する回答を添付してください。</strong><br>
+            <span style="color:#64748b;">Please resubmit your manuscript based on the reviewers' and editor's comments.<br>
+            <strong>Please attach your revised manuscript and a point-by-point response to the reviewers' and editor's comments.</strong></span>
+          </p>
+          <button onclick="renderResubmissionForm(document.getElementById('main-content'), ${JSON.stringify(ms).replace(/"/g, '&quot;')})" style="background-color: var(--success); padding:12px 24px;">再投稿フォームを開く / Open Resubmission Form</button>`}
+        </div>` : '';
+
+
+      content.innerHTML = `
+        <div class="status-card">
+          <h3 style="margin-bottom:1rem;">進捗状況 / Progress</h3>
+          ${buildProgressTimeline(ms.finalStatus === 'final_review' || (USER_ROLE === 'Editor-in-chief' && ms._editorScore && !ms.sentBackAt) ? 'final_review' : ms._progressStatus)}
+          ${renderManuscriptHeader(ms)}
+          ${renderManuscriptInfoTable(ms, { showAuthors: (USER_ROLE !== 'Author'), showSubmittedAt: true, showCorrespondingAuthor: true })}
+          ${buildReviewMaterialsPanel(ms.submittedFolderUrl || ms.folderUrl, (USER_ROLE === 'Editor-in-chief' || USER_ROLE === 'Managing-Editor') ? ms._reviewMaterialsFolderUrl : '')}
+          ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
+        </div>
+
+        <!-- Cover Letter / Revision Letter -->
+        ${(USER_ROLE === 'Editor-in-chief' || USER_ROLE === 'Managing-Editor') && (ms.LetterToEditor || ms.letterToEditor) ? `
+        <div class="status-card" style="margin-top:2rem; border-left:5px solid #f97316;">
+          <h3 style="margin-bottom:1rem;">著者からのレター / Cover Letter</h3>
+          <div style="white-space:pre-wrap; background:#fff9f2; padding:1rem; border-radius:8px; border:1px solid #fed7aa; font-size:0.95rem;">${ms.LetterToEditor || ms.letterToEditor}</div>
+        </div>` : ''}
+
+        <!-- Author Decision Card (path1: direct EIC feedback) -->
+        ${USER_ROLE === 'Author' && ms.score ? `
+        <div class="status-card" style="margin-top:2rem; border: 2px solid var(--primary);">
+          <h3 style="margin-bottom:1rem;">通知された判定 / Final Decision</h3>
+          <div style="background:#f8fafc; padding:1.25rem; border-radius:8px;">
+            <p style="font-size:1.1rem; font-weight:700;">判定: <span style="background:var(--primary); color:#fff; padding:2px 10px; border-radius:4px;">${ms.score}</span></p>
+            <div style="margin-top:1.25rem;">
+              <p style="font-weight:700; font-size:0.9rem; color:#475569; margin-bottom:0.5rem;">編集部からのコメント / Comments:</p>
+              <div style="white-space:pre-wrap; background:#fff; padding:1rem; border:1px solid #e2e8f0; border-radius:6px;">${ms.openComments || ms.OpenComments || '(なし)'}</div>
+            </div>
+            ${(ms.resultFolderUrl && ms.resultFolderUrl !== 'nofile') ? `<p style="margin-top:1.25rem;"><a href="${ms.resultFolderUrl}" target="_blank" style="color:var(--primary); font-weight:600;">📁 判定用資料を表示 / View Materials</a></p>` : ''}
+          </div>
+        </div>` : ''}
+
+        <!-- Author Decision Card (path2: ME-routed EIC final action) -->
+        ${USER_ROLE === 'Author' && ms.eicFinalDecision && !ms.score ? `
+        <div class="status-card" style="margin-top:2rem; border:2px solid #86efac;">
+          <h3 style="margin-bottom:1rem;">最終判定 / Final Decision</h3>
+          <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+            <span style="background:${_scoreColor(ms.eicFinalDecision)}; color:#fff; font-size:0.9rem; font-weight:700; padding:4px 16px; border-radius:12px;">${ms.eicFinalDecision}</span>
+            ${ms.finalStatus === 'in_production' ? '<span style="font-size:0.85rem; color:#4b7a58; font-weight:600;">受理・印刷工程中 / Accepted – In Production</span>' : ''}
+          </div>
+        </div>` : ''}
+
+        <!-- Editor-in-Chief Task Panel -->
+        ${USER_ROLE === 'Editor-in-chief' ? `
+          ${ms._progressStatus === 'eic_stopped' ? `
+            <div class="status-card" style="margin-top:2rem; border-left:6px solid #dc2626; background:#fef2f2;">
+              <h3 style="margin-bottom:0.5rem; color:#991b1b;">⛔ 審査停止済み / Review Stopped</h3>
+              <p style="margin:0; color:#7f1d1d;">停止日時 / Stopped at: <strong>${ms.stoppedByEicAt || ''}</strong></p>
+              <p style="margin:0.75rem 0 0; color:#6b7280; font-size:0.9rem;">著者への連絡は委員長が直接メールで行ってください。不要になった場合はヘッダーの「アーカイブ」ボタンで削除できます。</p>
+            </div>
+          ` : ms._progressStatus !== 'final_review' && !ms.managingEditorKey ? `
+            <div class="status-card" style="margin-top:2rem;">
+              <h3 style="margin-bottom:1rem;">担当編集者の割当 / Editor Assignment</h3>
+              ${buildEditorStatusTable(ms._editorList || [], true)}
+              ${!ms._editorAccepted && !ms._editorPending ? `
+              <div style="margin-top:1rem; padding-top:1rem; border-top:1px solid #eee;">
+                ${ms._prevEditorName ? `
+                <div style="margin-bottom:1.25rem; padding:0.85rem 1rem; background:#eff6ff; border:1px solid #93c5fd; border-radius:8px; font-size:0.9rem; line-height:1.6;">
+                  ℹ️ <strong>前回の担当編集者 / Previous Handling Editor:</strong>
+                  　${ms._prevEditorName}（${ms._prevEditorEmail}）<br>
+                  <span style="color:#6b7280; font-size:0.85rem;">
+                    事情により他の候補者を指名することもできます。<br>
+                    You may also designate a different candidate if circumstances require.
+                  </span>
+                </div>` : ''}
+                <div class="form-group"><label>氏名 / Name</label><input type="text" id="editorName" value="${ms._prevEditorName || ''}"></div>
+                <div class="form-group"><label>メール / Email</label><input type="email" id="editorEmail" value="${ms._prevEditorEmail || ''}"></div>
+                <div class="form-group"><label>担当編集者へのレター / Letter to Editor</label><textarea id="editorLetterToEditor" rows="4" placeholder="依頼の背景や注意事項などをご記入ください（任意）"></textarea></div>
+                <button onclick="submitEditorAssignment()" id="assign-btn">担当編集者を指名 / Assign Editor</button>
+              </div>` : ''}
+            </div>
+            <div class="status-card" style="margin-top:2rem;">
+              <h3 style="margin-bottom:1rem;">査読結果 / Review Results</h3>
+              ${buildEditorReviewResultsPanel(ms._reviewerList || [], true)}
+              ${buildMeEditorPanel(ms._editorList || [])}
+              ${buildEditorReportLinksPanel(ms._editorList || [])}
+            </div>
+            ${ms._editorScore && !ms.sentBackAt ? `
+            <div class="status-card" style="margin-top:2rem; background:#fffbeb; border:2px solid #fcd34d;">
+              <h3 style="margin-bottom:1rem;">判定通知を著者に送信 / Send Decision</h3>
+              <div style="padding:0.85rem 1rem; background:#fef9c3; border:1px solid #facc15; border-radius:8px; margin-bottom:1.25rem; font-size:0.875rem; line-height:1.75; color:#713f12;">
+                ⚠️ <strong>送信内容について / What will be sent to the author:</strong><br>
+                著者に送られるのは、<strong>編集委員長から著者へのコメント</strong>と<strong>編集委員長が添付したファイル</strong>のみです。査読者・担当編集者・編集幹事のコメントが自動で著者に送られることはありません。それらを含める必要がある場合は、編集委員長が取りまとめてコメントまたはファイルとして送信してください。<br>
+                <span style="color:#92400e;">Only the <strong>Editor-in-Chief's comments</strong> and <strong>files attached by the Editor-in-Chief</strong> will be sent to the author. Comments from reviewers, the handling editor, or the managing editor are <em>not</em> forwarded automatically. If you wish to include them, please compile and send them as part of your comments or as an attached file.</span>
+              </div>
+              <form onsubmit="event.preventDefault(); submitFeedback(USER_KEY);">
+                <div class="form-group"><label>判定 / Score</label><select id="finalScore" required data-me-redirect-scores='${JSON.stringify(ms._meRedirectScores || []).replace(/'/g, "&#39;")}'><option value="">選択してください...</option>${(ms._scoreOptions || []).map(s => `<option value="${s}">${s}</option>`).join('')}</select></div>
+                <div class="form-group"><label>著者へのコメント / Comments for Author</label><textarea id="feedbackComments" rows="4" placeholder="著者に開示されるコメント / These comments will be shared with the author"></textarea></div>
+                <div class="form-group">
+                  <label>📎 添付ファイル / Attachments <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span></label>
+                  <input type="file" id="eicFeedbackFiles" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+                </div>
+                ${_buildCommentAttachBox(ms, false)}
+                <button type="submit" id="feedback-btn" style="background:#d97706; color:#fff; padding:12px 28px; border:none; border-radius:6px; font-weight:600; font-size:1rem; cursor:pointer;">判定通知を送信 / Send Decision</button>
+              </form>
+            </div>` : ms.sentBackAt ? `
+            <div class="status-card" style="margin-top:2rem; padding:1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px;">
+              <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+                <h4 style="margin:0; color:#15803d;">✅ 判定通知送信済み / Decision Sent</h4>
+                <span style="background:${_scoreColor(ms.score)}; color:#fff; font-size:0.78rem; font-weight:700; padding:3px 12px; border-radius:12px;">${ms.score || '?'}</span>
+                <span style="font-size:0.85rem; color:#4b7a58;">(${ms.sentBackAt})</span>
+              </div>
+              <div>
+                <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">著者へのコメント / Comments for Author</p>
+                <div style="white-space:pre-wrap; background:#f0f7ff; padding:0.875rem; border-radius:6px; border:1px solid #bfdbfe; font-size:0.875rem; line-height:1.7; color:#1e293b;">${ms.openComments || ms.OpenComments || '(なし / none)'}</div>
+              </div>
+            </div>` : ''}
+            ${ms._progressStatus === 'submitted' ? `
+            <div class="status-card" style="margin-top:2rem; border:1px solid #fca5a5; background:#fff7f7;">
+              <h3 style="margin-bottom:0.5rem; color:#b91c1c;">審査停止（投稿直後却下）/ Stop Review</h3>
+              <p style="font-size:0.9rem; color:#6b7280; margin:0 0 1rem;">担当編集者の割当を行わず審査を停止します。著者への連絡は委員長が直接メールで行ってください。</p>
+              <button onclick="handleStopByEicClick()" style="background:#dc2626; color:#fff; padding:10px 20px; border-radius:6px; font-weight:600; border:none; cursor:pointer;">審査を停止する / Stop Review</button>
+            </div>` : ''}
+          ` : `
+            <div class="status-card" style="margin-top:2rem; border-left: 10px solid #2563eb;">
+              <h3 style="margin-bottom:1rem; color:#1e40af;">最終確認フェーズ / Final Review (ME Routed)</h3>
+
+              <!-- 査読結果アコーディオン -->
+              ${buildEditorReviewResultsPanel(ms._reviewerList || [], true)}
+
+              <!-- 担当編集者レポート -->
+              ${buildMeEditorPanel(ms._editorList || [])}
+              ${buildEditorReportLinksPanel(ms._editorList || [])}
+
+              <!-- 編集幹事フィードバック -->
+              <div style="margin-top:1.5rem; padding:1.25rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
+                <h4 style="margin:0 0 1rem; font-size:1rem; font-weight:700; color:#1e293b;">編集幹事からのフィードバック / Managing Editor's Feedback</h4>
+                <div style="margin-bottom:1rem;">
+                  <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">① 著者宛コメント / Comment for Author</p>
+                  <div style="white-space:pre-wrap; background:#f0f7ff; padding:0.875rem; border-radius:6px; border:1px solid #bfdbfe; font-size:0.875rem; line-height:1.7; color:#1e293b;">${ms.managingEditorAuthorComment || ms.ManagingEditorAuthorComment || '(なし / none)'}</div>
+                </div>
+                <div style="${(ms.managingEditorFileUrl || ms.ManagingEditorFileUrl) ? 'margin-bottom:1rem;' : ''}">
+                  <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">② 委員長・内部用コメント / Internal Comment to EIC</p>
+                  <div style="white-space:pre-wrap; background:#fffbeb; padding:0.875rem; border-radius:6px; border:1px solid #fcd34d; font-size:0.875rem; line-height:1.7; color:#1e293b;">${ms.managingEditorInternalComment || ms.ManagingEditorInternalComment || '(なし / none)'}</div>
+                </div>
+                ${(ms.managingEditorFileUrl || ms.ManagingEditorFileUrl) ? '<div style="padding-top:0.75rem; border-top:1px solid #e2e8f0;"><a href="' + (ms.managingEditorFileUrl || ms.ManagingEditorFileUrl) + '" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 編集幹事の添付ファイル / ME Attachment</a></div>' : ''}
+              </div>
+              ${(ms.eicFinalDecision || ms.eicFinalComment) ? `
+              <div style="margin:1rem 0; padding:1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px;">
+                <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:${ms.eicFinalComment ? '0.75rem' : '0'};">
+                  <h4 style="margin:0; color:#15803d;">✅ 送信済みの委員長アクション / Your Submitted Action</h4>
+                  ${ms.eicFinalDecision ? '<span style="background:' + _scoreColor(ms.eicFinalDecision) + '; color:#fff; font-size:0.78rem; font-weight:700; padding:3px 12px; border-radius:12px;">' + ms.eicFinalDecision + '</span>' : ''}
+                </div>
+                ${ms.eicFinalComment ? '<div style="margin-bottom:0.5rem;"><p style="margin:0 0 0.25rem; font-size:0.75rem; font-weight:600; color:#1d4ed8;">著者へのコメント / Author Comment</p><div style="white-space:pre-wrap; background:#fff; padding:0.875rem; border-radius:6px; border:1px solid #d1fae5; font-size:0.875rem; line-height:1.7; color:#1e293b;">' + ms.eicFinalComment + '</div></div>' : ''}
+                ${ms.eicProductionComment ? '<div><p style="margin:0 0 0.25rem; font-size:0.75rem; font-weight:600; color:#059669;">印刷担当者へのコメント / Production Comment</p><div style="white-space:pre-wrap; background:#fff; padding:0.875rem; border-radius:6px; border:1px solid #d1fae5; font-size:0.875rem; line-height:1.7; color:#1e293b;">' + ms.eicProductionComment + '</div></div>' : ''}
+                ${ms.eicFinalFileUrl ? '<div style="margin-top:0.75rem;"><a href="' + ms.eicFinalFileUrl + '" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 添付ファイルを確認 / View Attachment</a></div>' : ''}
+              </div>` : ''}
+              <div style="padding:0.85rem 1rem; background:#fef9c3; border:1px solid #facc15; border-radius:8px; margin-bottom:1.25rem; font-size:0.875rem; line-height:1.75; color:#713f12;">
+                ⚠️ <strong>送信内容について / What will be sent:</strong><br>
+                <strong>【ルートa】投稿者に差し戻す場合：</strong>「著者へのコメント」と「添付ファイル」が<strong>著者</strong>に送信されます。「印刷担当者へのコメント」は使用されません。<br>
+                <strong>【ルートb】印刷担当者に送る場合：</strong>「著者へのコメント」が<strong>著者</strong>に、「印刷担当者へのコメント」と「添付ファイル」が<strong>印刷担当者</strong>に送信されます。<br>
+                いずれのルートでも、査読者・担当編集者・編集幹事のコメントは自動転送されません。含める場合は取りまとめてコメントまたはファイルとして添付してください。<br>
+                <span style="color:#92400e;">
+                  <strong>[Route a] Return to Author:</strong> The <strong>author comment</strong> and <strong>attached files</strong> are sent to the <strong>author</strong>. The production editor comment field is not used.<br>
+                  <strong>[Route b] Send to Production:</strong> The <strong>author comment</strong> is sent to the <strong>author</strong>; the <strong>production editor comment</strong> and <strong>attached files</strong> are sent to the <strong>production editor</strong>.<br>
+                  In either route, comments from reviewers, the handling editor, and the managing editor are <em>not</em> forwarded automatically.
+                </span>
+              </div>
+              <div class="form-group">
+                <label>判定種別 / Decision Template</label>
+                <select id="eicDecision" onchange="onEicDecisionChange(this)">
+                  <option value="">-- 選択 --</option>
+                  ${(ms._decisionMailOptions || []).map(o => `<option value="${o.value}" data-accepted="${o.isAccepted ? 'yes' : 'no'}" data-resubmit="${o.allowsResubmit ? 'yes' : 'no'}">${o.value}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group"><label>著者へのコメント / Comments for Author</label><textarea id="eicAuthorComment" rows="3" placeholder="著者に送付されるコメント / These comments will be sent to the author"></textarea></div>
+              <div class="form-group" id="eicProductionCommentGroup">
+                <label>印刷担当者へのコメント / Comments for Production Editor</label>
+                <textarea id="eicProductionComment" rows="3" disabled placeholder="ルートb（印刷担当者送付）選択時に入力可 / Available when Route b is selected" style="background:#f1f5f9; color:#94a3b8; cursor:not-allowed;"></textarea>
+              </div>
+              <div class="form-group">
+                <label>📎 添付ファイル / Attachments <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span></label>
+                <input type="file" id="eicFinalFiles" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+              </div>
+              ${_buildCommentAttachBox(ms, true)}
+              <div style="display:flex; flex-direction:column; gap:10px; margin-top:2rem;">
+                <button onclick="submitEicFinalAction('a')" id="eic-route-a-btn" disabled style="background:#94a3b8; color:#fff; padding:12px; border-radius:6px; font-weight:600; border:none; cursor:not-allowed;" title="判定種別を選択してください / Please select a decision type">[ルートa] 投稿者に差し戻す / Return to Author</button>
+                <button onclick="submitEicFinalAction('b')" id="eic-route-b-btn" disabled style="background:#94a3b8; color:#fff; padding:12px; border-radius:6px; font-weight:600; border:none; cursor:not-allowed;" title="受理かつ再投稿なしの判定を選んだ場合のみ押せます / Available only for Accept without resubmission">[ルートb] 印刷担当者に送る / Send to Production</button>
+              </div>
+            </div>
+          `}
+        ` : ''}
+
+        ${resubmissionBlock}
+      `;
+  };
+  const _aup = _consumePreloadedData();
+  if (_aup !== null) { _handleAuthor(_aup); return; }
+  google.script.run
+    .withSuccessHandler(_handleAuthor)
+    .withFailureHandler(err => {
+      document.getElementById('status-content').innerHTML = '<p class="error">データ取得エラー: ' + err.message + '</p>';
+    })
+    .getManuscriptData(serverRole, USER_KEY);
+}
+
+/**
+ * 担当編集者指名
+ */
+function submitEditorAssignment() {
+  const btn = document.getElementById('assign-btn'); btn.disabled = true; btn.textContent = '送信中... / Sending...';
+  const data = { msKey: USER_KEY, editorName: document.getElementById('editorName').value, editorEmail: document.getElementById('editorEmail').value, letterToEditor: document.getElementById('editorLetterToEditor').value };
+  google.script.run.withSuccessHandler(() => renderAuthorView(document.getElementById('main-content'))).withFailureHandler(err => { alert(err); btn.disabled = false; btn.textContent = '担当編集者を指名 / Assign Editor'; }).apiAssignEditor(data);
+}
+
+/**
+ * 担当編集者メニュー
+ */
+function renderEditorView(container) {
+  container.innerHTML = '<h2>担当編集メニュー / Editor Dashboard</h2><div id="editor-content" class="loader">読み込み中...</div>';
+  const _handleEditor = ms => {
+    const div = document.getElementById('editor-content');
+    if (!ms) { div.className = ''; div.innerHTML = '<p class="error">データが見つかりませんでした。ページを再読み込みしてください。</p>'; return; }
+    div.className = '';
+    div.innerHTML = `
+      <div class="status-card">
+        ${buildProgressTimeline(ms._progressStatus)}
+        ${renderManuscriptHeader(ms)}
+        ${renderManuscriptInfoTable(ms, { showAuthors: true })}
+        ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
+        ${ms.Score ? '' : buildReviewMaterialsPanel(ms.folderUrl, ms._reviewMaterialsFolderUrl)}
+        ${buildPastReviewersPanel(ms._pastReviewersByRound || [])}
+        ${buildEditorReviewResultsPanel(ms._reviewerList || [])}
+        ${_buildFinalDecisionBanner(ms)}
+        <div style="margin-top:1.5rem; border-radius:8px; border:1px solid #e2e8f0; overflow:hidden;">
+          <div onclick="toggleRevAssignPanel()" style="display:flex; align-items:center; justify-content:space-between; padding:0.85rem 1rem; background:#f8fafc; cursor:pointer; user-select:none;">
+            <h4 style="margin:0; font-size:1rem;">査読者を指名 / Assign Reviewer</h4>
+            <span id="rev-assign-icon" style="font-size:0.75rem; color:#9ca3af;">${ms._allReviewsIn ? '▶ 展開' : '▼ 閉じる'}</span>
+          </div>
+          <div id="rev-assign-body" style="display:${ms._allReviewsIn ? 'none' : 'block'}; padding:1rem; background:#fff; border-top:1px solid #e2e8f0;">
+            ${ms._allReviewsIn ? `
+            <p style="margin:0 0 0.75rem; padding:0.5rem 0.75rem; background:#f0fdf4; border:1px solid #86efac; border-radius:6px; font-size:0.85rem; color:#166534;">
+              ✅ 全ての査読結果が揃っています。追加の査読者を指名する場合は上のヘッダーをクリックして展開してください。<br>
+              All reviews have been submitted. Click the header above to expand if you need to assign additional reviewers.
+            </p>` : ''}
+            <p style="margin:0 0 1rem; font-size:0.875rem; color:#6b7280;">1名ずつ入力して送信してください。複数名を指名する場合は、1名送信後に続けて入力できます。<br>Enter one reviewer at a time. You can assign multiple reviewers by submitting one at a time.</p>
+            <div class="form-group"><label>氏名 / Name</label><input type="text" id="rn1"></div>
+            <div class="form-group"><label>メール / Email</label><input type="email" id="re1"></div>
+            <div class="form-group"><label>査読者へのレター / Letter to Reviewer</label><textarea id="rl1" rows="4" placeholder="依頼の背景や注意事項などをご記入ください（任意）/ Optional message to the reviewer"></textarea></div>
+            <button id="rev-send-btn" onclick="assignRev('${ms.editorKey}')">招待を送る / Send Invitation</button>
+          </div>
+        </div>
+        ${buildEditorRecommendationForm(ms)}
+      </div>`;
+  };
+  const _edp = _consumePreloadedData();
+  if (_edp !== null) { _handleEditor(_edp); return; }
+  google.script.run
+    .withSuccessHandler(_handleEditor)
+    .withFailureHandler(err => {
+      const div = document.getElementById('editor-content');
+      if (div) { div.className = ''; div.innerHTML = '<p class="error">データ取得エラー: ' + err.message + '</p>'; }
+    })
+    .getManuscriptData('editor', USER_KEY);
+}
+
+/**
+ * 担当編集者の推薦フォームHTML生成
+ * 全査読完了後に表示。送信済みなら受領確認を表示。
+ */
+function buildEditorRecommendationForm(ms) {
+  // 全査読未完了
+  if (!ms._allReviewsIn) return '';
+
+  // 推薦送信済み（editor_log.Score が存在）
+  if (ms.Score) {
+    const fileLinks = [
+      ms.reportPdfUrl  ? `<a href="${ms.reportPdfUrl}"  target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none; margin-right:1.25rem;">📄 レポート（PDF） / Report (PDF)</a>` : '',
+      ms.reportWordUrl ? `<a href="${ms.reportWordUrl}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📝 査読者・編集者オープンコメント（Word） / Reviewer &amp; Editor Open Comments (Word)</a>` : ''
+    ].filter(Boolean).join('');
+    return `
+      <div style="margin-top:1.5rem; padding:1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px;">
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+          <h4 style="margin:0; color:#15803d;">✅ 推薦送信済み / Recommendation Submitted</h4>
+          <span style="background:${_scoreColor(ms.Score)}; color:#fff; font-size:0.78rem; font-weight:700; padding:3px 12px; border-radius:12px;">${ms.Score}</span>
+          ${ms.Received_At ? `<span style="font-size:0.85rem; color:#4b7a58;">(${ms.Received_At})</span>` : ''}
+        </div>
+        ${_buildSubmittedCommentsBlock(ms.Message, ms.ConfidentialMessage)}
+        ${fileLinks ? `<div style="margin-top:1rem; padding-top:0.75rem; border-top:1px solid #d1fae5;">${fileLinks}</div>` : ''}
+      </div>`;
+  }
+
+  // 推薦フォーム表示
+  const scoreOptions = (ms._scoreOptions || []).map(s => `<option value="${s}">${s}</option>`).join('');
+  return `
+    <div style="margin-top:1.5rem; padding:1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px;">
+      <h4 style="margin:0 0 0.25rem; color:#15803d;">✉️ 委員長への推薦 / Recommendation to EIC</h4>
+      <p style="margin:0 0 1.25rem; font-size:0.875rem; color:#374151;">全ての査読結果が揃いました。内容を確認して推薦判定をお送りください。</p>
+      <form onsubmit="event.preventDefault(); submitEditorRecommendation('${ms.editorKey}');">
+        <div class="form-group">
+          <label>推薦判定 / Recommendation *</label>
+          <select id="er-score" required>${scoreOptions}</select>
+        </div>
+        <div class="form-group">
+          <label>著者へのコメント / Open Comments for Author</label>
+          <textarea id="er-open" rows="5" placeholder="著者に開示されるコメントを入力してください / These comments will be shared with the author"></textarea>
+        </div>
+        <div class="form-group">
+          <label>🔒 委員長へのコンフィデンシャルコメント / Confidential Comments to EIC
+            <span style="font-size:0.8em; font-weight:400; color:#64748b;">（著者には非開示 / Not shared with author）</span>
+          </label>
+          <textarea id="er-conf" rows="4" placeholder="任意 / Optional"></textarea>
+        </div>
+        <div class="form-group">
+          <label>📎 添付ファイル / Attachments
+            <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span>
+          </label>
+          <input type="file" id="er-files" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+        </div>
+        <button type="submit" id="er-btn" style="background:#15803d; color:#fff; padding:12px 28px; border:none; border-radius:6px; font-weight:600; font-size:1rem; cursor:pointer;">
+          推薦を送信 / Submit Recommendation
+        </button>
+      </form>
+    </div>`;
+}
+
+/**
+ * 推薦フォーム送信（ファイルBase64エンコード対応）
+ */
+async function submitEditorRecommendation(editorKey) {
+  const btn = document.getElementById('er-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '送信中... / Submitting...'; btn.style.background = '#94a3b8'; btn.style.cursor = 'not-allowed'; }
+
+  // ファイルをBase64エンコード
+  const fileInput = document.getElementById('er-files');
+  const files = [];
+  if (fileInput && fileInput.files.length > 0) {
+    for (const file of fileInput.files) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        files.push({ name: file.name, mimeType: file.type || 'application/octet-stream', content: base64 });
+      } catch (e) {
+        alert('ファイルの読み込みに失敗しました: ' + file.name + '\n' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '推薦を送信 / Submit Recommendation'; btn.style.background = '#15803d'; btn.style.cursor = 'pointer'; }
+        return;
+      }
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(() => renderEditorView(document.getElementById('main-content')))
+    .withFailureHandler(err => {
+      alert('エラー: ' + (err && err.message ? err.message : String(err)));
+      if (btn) { btn.disabled = false; btn.textContent = '推薦を送信 / Submit Recommendation'; btn.style.background = '#15803d'; btn.style.cursor = 'pointer'; }
+    })
+    .apiSubmitRecommendation({
+      editorKey:            editorKey,
+      score:                document.getElementById('er-score').value,
+      openComments:         document.getElementById('er-open').value,
+      confidentialComments: document.getElementById('er-conf').value,
+      files:                files
+    });
+}
+
+function cancelReviewer(reviewKey) {
+  if (!confirm('この査読依頼を取り下げますか？\nWithdraw this reviewer invitation?')) return;
+  if (!confirm('本当に取り下げますか？この操作は取り消せません。\nAre you sure? This action cannot be undone.')) return;
+  google.script.run
+    .withSuccessHandler(() => renderEditorView(document.getElementById('main-content')))
+    .withFailureHandler(err => alert(err.message))
+    .apiCancelReviewerInvitation(reviewKey);
+}
+
+function cancelEditor(editorKey) {
+  if (!confirm('この担当編集者の割当を取り下げますか？\nWithdraw this editor assignment?')) return;
+  if (!confirm('本当に取り下げますか？この操作は取り消せません。\nAre you sure? This action cannot be undone.')) return;
+  google.script.run
+    .withSuccessHandler(() => renderEicView(document.getElementById('main-content')))
+    .withFailureHandler(err => alert(err.message))
+    .apiCancelEditorAssignment(editorKey);
+}
+
+function toggleRevAssignPanel() {
+  const body = document.getElementById('rev-assign-body');
+  const icon = document.getElementById('rev-assign-icon');
+  if (!body || !icon) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  icon.textContent   = isOpen ? '▶ 展開'  : '▼ 閉じる';
+}
+
+function assignRev(key) {
+  const btn = document.getElementById('rev-send-btn');
+  btn.disabled = true;
+  btn.textContent = '送信中... / Sending...';
+  google.script.run
+    .withSuccessHandler(() => renderEditorView(document.getElementById('main-content')))
+    .withFailureHandler(err => { alert(err.message); btn.disabled = false; btn.textContent = '招待を送る / Send Invitation'; })
+    .apiAssignReviewers({ editorKey: key, numberReviewer: '1', nameCandidate1: document.getElementById('rn1').value, emailCandidate1: document.getElementById('re1').value, letterToCandidate1: document.getElementById('rl1').value });
+}
+
+/**
+ * 査読者招待状況テーブル
+ */
+function buildEditorStatusTable(list, showCancelBtn) {
+  if (!list || list.length === 0) return '<p>履歴なし</p>';
+  const rows = list.map(e => {
+    const statusLabel = e.edtOk === 'ok' ? '承諾' : e.edtOk === 'ng' ? '辞退' : e.edtOk === 'cancelled' ? '取消済み' : '検討中';
+    const canCancel = showCancelBtn && e.editorKey && e.edtOk !== 'ok' && e.edtOk !== 'ng' && e.edtOk !== 'cancelled';
+    const cancelBtn = canCancel
+      ? `<button onclick="cancelEditor('${e.editorKey}')" style="width:auto !important; font-size:0.72rem; padding:2px 8px; background:#fff; border:1px solid #ef4444; color:#ef4444; border-radius:4px; cursor:pointer; white-space:nowrap; line-height:1.4;">取下げ / Withdraw</button>`
+      : '';
+    return `<tr>
+      <td style="padding:4px 6px;">${e.Editor_Name}</td>
+      <td style="padding:4px 6px;">${statusLabel}</td>
+      <td style="padding:4px 6px;">${e.Score || '-'}</td>
+      ${showCancelBtn ? `<td style="padding:4px 6px;">${cancelBtn}</td>` : ''}
+    </tr>`;
+  });
+  const cancelHeader = showCancelBtn ? '<th></th>' : '';
+  return `<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+    <thead><tr style="background:#f1f5f9;"><th style="padding:4px 6px;">氏名</th><th style="padding:4px 6px;">状況</th><th style="padding:4px 6px;">推薦</th>${cancelHeader}</tr></thead>
+    <tbody>${rows.join('')}</tbody>
+  </table>`;
+}
+
+function buildReviewerStatusTable(list, readOnly) {
+  if (!list || list.length === 0) return '<p>査読者なし / No reviewers assigned</p>';
+  const rows = list.map(r => {
+    const statusLabel = r.revOk === 'ok' ? '受諾済み / Accepted'
+                      : r.revOk === 'ng' ? '辞退 / Declined'
+                      : r.revOk === 'cancelled' ? '取り下げ済み / Withdrawn'
+                      : '依頼中 / Pending';
+    const submittedLabel = r.Received_At ? ' — ✓ 提出済 / Submitted' : '';
+    const cancelBtn = (!readOnly && r.revOk !== 'ng' && r.revOk !== 'cancelled' && !r.Received_At)
+      ? `<button onclick="cancelReviewer('${r.reviewKey}')" style="margin-left:0.75rem; font-size:0.75rem; padding:2px 8px; background:#fff; border:1px solid #ef4444; color:#ef4444; border-radius:4px; cursor:pointer;">招待を取り下げる / Withdraw</button>`
+      : '';
+    return `<li style="margin-bottom:0.4rem;">${r.Rev_Name} — ${statusLabel}${submittedLabel}${cancelBtn}</li>`;
+  });
+  return `<div style="margin-bottom:1rem;"><strong>査読者一覧 / Reviewer List:</strong><ul style="font-size:0.9rem; margin-top:0.5rem;">${rows.join('')}</ul></div>`;
+}
+
+function buildEditorRecommendationSection(list) {
+  const e = (list || []).find(e => e.edtOk === 'ok' && e.Score);
+  if (!e) return '';
+  return `<div style="margin-top:1.5rem; padding:1rem; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;"><strong>エディター推薦: ${e.Score}</strong><p style="white-space:pre-wrap; font-size:0.9rem; margin-top:0.5rem;">${e.Message || ''}</p></div>`;
+}
+
+/**
+ * 担当編集者用：過去ラウンドの査読者を参考表示するパネル（折りたたみ）。
+ * 各行に「再指名」ボタンがあり、クリックで Assign Reviewer フォームに自動入力する。
+ */
+function buildPastReviewersPanel(pastReviewersByRound) {
+  if (!pastReviewersByRound || pastReviewersByRound.length === 0) return '';
+
+  const scoreColor = s => {
+    const v = (s || '').toLowerCase();
+    if (v.includes('accept')) return '#059669';
+    if (v.includes('reject')) return '#dc2626';
+    if (v.includes('major'))  return '#d97706';
+    if (v.includes('minor'))  return '#2563eb';
+    return '#475569';
+  };
+  const esc = s => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  // onclick 属性内に渡す JS 文字列リテラル用エスケープ
+  const jsStr = s => String(s == null ? '' : s)
+    .replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const roundsHTML = pastReviewersByRound.map(entry => {
+    const rowsHTML = (!entry.reviewers || entry.reviewers.length === 0)
+      ? '<p style="margin:0; font-size:0.85rem; color:#9ca3af;">査読者なし / No reviewers assigned.</p>'
+      : entry.reviewers.map(r => {
+          const submitted   = r.revOk === 'ok' && r.Received_At !== '';
+          const declined    = r.revOk === 'ng' || r.revOk === 'cancelled';
+          const statusIcon  = submitted ? '✓' : declined ? '✗' : '–';
+          const statusColor = submitted ? '#059669' : declined ? '#9ca3af' : '#d97706';
+          const scoreBadge  = r.Score
+            ? `<span style="background:${scoreColor(r.Score)}; color:#fff; font-size:0.7rem; font-weight:700; padding:1px 8px; border-radius:10px;">${esc(r.Score)}</span>`
+            : '';
+          const dateStr = r.Received_At
+            ? `<span style="font-size:0.75rem; color:#9ca3af;">${esc(r.Received_At)}</span>`
+            : '';
+          const reuseBtn = r.Rev_Email
+            ? `<button type="button" onclick="reusePastReviewer('${jsStr(r.Rev_Name)}','${jsStr(r.Rev_Email)}')" style="font-size:0.72rem; padding:2px 8px; border:1px solid #cbd5e1; background:#fff; color:#2563eb; border-radius:4px; cursor:pointer; flex-shrink:0;" title="この査読者を指名フォームに自動入力 / Fill assignment form">↧ 再指名 / Reuse</button>`
+            : '';
+          return `<div style="display:flex; align-items:center; padding:0.35rem 0; border-bottom:1px solid #f0f0f0; gap:0.5rem; flex-wrap:wrap;">
+            <span style="font-size:0.82rem; font-weight:600; color:${statusColor}; flex-shrink:0; width:1rem; text-align:center;">${statusIcon}</span>
+            <span style="font-size:0.875rem; color:#374151; flex:1; min-width:0; word-break:break-word;">${esc(r.Rev_Name)}${r.Rev_Email ? ` <span style="color:#6b7280; font-size:0.8rem;">(${esc(r.Rev_Email)})</span>` : ''}</span>
+            ${scoreBadge}${dateStr}${reuseBtn}
+          </div>`;
+        }).join('');
+
+    return `<div style="margin-bottom:0.75rem; padding:0.6rem 0.85rem; background:#fff; border-radius:6px; border:1px solid #e5e7eb;">
+      <p style="margin:0 0 0.4rem; font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em;">
+        Round ${entry.round} <span style="font-weight:400; font-size:0.72rem; color:#9ca3af;">(${esc(entry.msVer)})</span>
+      </p>
+      ${rowsHTML}
+    </div>`;
+  }).join('');
+
+  const totalRounds = pastReviewersByRound.length;
+  return `
+    <div style="margin-top:1.25rem; border-radius:8px; border:1px solid #e5e7eb; overflow:hidden;">
+      <div onclick="togglePastReviewersPanel()" style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem; background:#f9fafb; cursor:pointer; user-select:none;">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#374151;">過去ラウンドの査読者 / Previous Round Reviewers</h4>
+          <span style="background:#e5e7eb; color:#6b7280; font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:10px;">${totalRounds} round${totalRounds > 1 ? 's' : ''}</span>
+        </div>
+        <span id="past-reviewers-icon" style="font-size:0.75rem; color:#9ca3af;">▶ 展開</span>
+      </div>
+      <div id="past-reviewers-panel" style="display:none; padding:0.75rem 1rem; background:#f9fafb; border-top:1px solid #e5e7eb;">
+        ${roundsHTML}
+      </div>
+    </div>`;
+}
+
+function togglePastReviewersPanel() {
+  const body = document.getElementById('past-reviewers-panel');
+  const icon = document.getElementById('past-reviewers-icon');
+  if (!body || !icon) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  icon.textContent   = isOpen ? '▶ 展開' : '▼ 閉じる';
+}
+
+function reusePastReviewer(name, email) {
+  const nameEl  = document.getElementById('rn1');
+  const emailEl = document.getElementById('re1');
+  if (!nameEl || !emailEl) {
+    alert('指名フォームが見つかりません。 / Assignment form not found.');
+    return;
+  }
+  if ((nameEl.value && nameEl.value !== name) || (emailEl.value && emailEl.value !== email)) {
+    if (!confirm('既に入力されている内容を上書きしますか？ / Overwrite existing input?')) return;
+  }
+  nameEl.value  = name;
+  emailEl.value = email;
+
+  const body = document.getElementById('rev-assign-body');
+  const icon = document.getElementById('rev-assign-icon');
+  if (body && body.style.display === 'none') {
+    body.style.display = 'block';
+    if (icon) icon.textContent = '▼ 閉じる';
+  }
+  nameEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => emailEl.focus(), 300);
+}
+
+/**
+ * 担当編集者用：査読結果パネル（提出済みアコーディオン＋未提出リスト）
+ */
+function buildEditorReviewResultsPanel(reviewerList, readOnly = false) {
+  if (!reviewerList || reviewerList.length === 0) {
+    return '<p style="color:#6b7280; font-size:0.9rem; margin-top:1rem;">査読者なし / No reviewers assigned yet.</p>';
+  }
+
+  const submitted  = reviewerList.filter(r => r.Received_At);
+  const pending    = reviewerList.filter(r => !r.Received_At && r.revOk !== 'ng' && r.revOk !== 'cancelled');
+  const dismissed  = reviewerList.filter(r => r.revOk === 'ng' || r.revOk === 'cancelled');
+  const total      = submitted.length + pending.length;
+
+  // スコアバッジの色
+  const scoreColor = s => {
+    const v = (s || '').toLowerCase();
+    if (v.includes('accept'))       return '#059669';
+    if (v.includes('reject'))       return '#dc2626';
+    if (v.includes('major'))        return '#d97706';
+    if (v.includes('minor'))        return '#2563eb';
+    return '#475569';
+  };
+
+  // 進捗バー
+  const pct = total > 0 ? Math.round(submitted.length / total * 100) : 0;
+  const allDone = total > 0 && submitted.length === total;
+  const progressBar = `
+    <div style="margin-bottom:1.25rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+        <span style="font-size:0.85rem; color:#475569;">提出状況 / Submission Status</span>
+        <span style="font-weight:700; color:${allDone ? '#059669' : '#2563eb'};">${submitted.length} / ${total} 件完了</span>
+      </div>
+      <div style="background:#e2e8f0; border-radius:4px; height:6px;">
+        <div style="background:${allDone ? '#059669' : '#3b82f6'}; width:${pct}%; height:100%; border-radius:4px;"></div>
+      </div>
+    </div>`;
+
+  // 提出済みアコーディオンカード
+  const submittedHTML = submitted.length > 0
+    ? submitted.map(r => `
+      <div id="rev-card-${r.reviewKey}" style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; margin-bottom:0.75rem; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <div onclick="toggleEditorReviewCard('${r.reviewKey}')" style="cursor:pointer; padding:0.75rem 1rem; background:#f8fafc; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+          <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+            <span style="font-weight:600; font-size:0.95rem;">${r.Rev_Name}</span>
+            <span style="background:${scoreColor(r.Score)}; color:#fff; font-size:0.72rem; font-weight:700; padding:2px 10px; border-radius:12px; letter-spacing:0.02em;">${r.Score || '?'}</span>
+            <span style="font-size:0.78rem; color:#6b7280;">✓ ${r.Received_At}</span>
+            ${r.Review_Deadline ? `<span style="font-size:0.75rem; color:#9ca3af;">期限 / Due: ${r.Review_Deadline}</span>` : ''}
+          </div>
+          <span id="rev-card-icon-${r.reviewKey}" style="color:#9ca3af; font-size:0.75rem; flex-shrink:0;">▶ 展開</span>
+        </div>
+        <div id="rev-card-body-${r.reviewKey}" style="display:none; padding:1rem; border-top:1px solid #e2e8f0; background:#fff;">
+          <div id="rev-card-comments-${r.reviewKey}" class="loader" style="font-size:0.85rem;">読み込み中...</div>
+          ${r.folderUrl && r.folderUrl !== 'nofile'
+            ? `<div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid #f0f0f0;"><a href="${r.folderUrl}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 添付ファイルを開く / Open Attachments</a></div>`
+            : ''}
+        </div>
+      </div>`).join('')
+    : `<p style="font-size:0.875rem; color:#6b7280; padding:0.5rem 0;">まだ査読結果はありません / No reviews submitted yet.</p>`;
+
+  // 未提出リスト（取下げボタン付き）
+  const pendingHTML = pending.length > 0 ? `
+    <div style="margin-top:0.75rem; padding:0.75rem 1rem; background:#fefce8; border:1px solid #fde68a; border-radius:6px;">
+      <p style="margin:0 0 0.5rem; font-size:0.78rem; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">⏳ 未提出 / Awaiting</p>
+      ${pending.map(r => `
+        <div style="display:flex; align-items:center; gap:0.5rem; padding:0.35rem 0; border-bottom:1px solid #fde68a; font-size:0.875rem; color:#78350f;">
+          <span style="flex:1; min-width:0; word-break:break-word;">
+            ${r.Rev_Name}
+            <span style="display:inline-block; color:#a16207; font-size:0.75rem; white-space:nowrap;">(${r.revOk === 'ok' ? '受諾済 / Accepted' : '依頼中 / Invited'})</span>
+            ${r.Review_Deadline ? `<span style="display:block; color:#92400e; font-size:0.75rem;">期限 / Due: ${r.Review_Deadline}</span>` : ''}
+          </span>
+          ${!readOnly ? `<button onclick="cancelReviewer('${r.reviewKey}')" style="width:auto !important; flex-shrink:0; white-space:nowrap; font-size:0.72rem; padding:3px 10px; background:#fff; border:1px solid #ef4444; color:#ef4444; border-radius:4px; cursor:pointer; line-height:1.4;">取下げ / Withdraw</button>` : ''}
+        </div>`).join('')}
+    </div>` : '';
+
+  // 辞退・取消リスト
+  const dismissedHTML = dismissed.length > 0 ? `
+    <div style="margin-top:0.5rem; padding:0.5rem 1rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
+      <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:0.04em;">✗ 辞退・取消 / Declined or Withdrawn</p>
+      <p style="margin:0; font-size:0.85rem; color:#9ca3af;">${dismissed.map(r => r.Rev_Name).join('、')}</p>
+    </div>` : '';
+
+  return `
+    <div style="margin-top:1.5rem;">
+      <h4 style="margin:0 0 1rem; font-size:1rem; font-weight:700; color:#1e293b;">査読結果 / Review Results</h4>
+      ${progressBar}
+      ${submittedHTML}
+      ${pendingHTML}
+      ${dismissedHTML}
+    </div>`;
+}
+
+/**
+ * 担当編集者ビュー：査読アコーディオンの開閉＆コメント遅延読み込み
+ */
+function toggleEditorReviewCard(reviewKey) {
+  const body = document.getElementById('rev-card-body-' + reviewKey);
+  const icon = document.getElementById('rev-card-icon-' + reviewKey);
+  if (!body) return;
+
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (icon) icon.textContent = isOpen ? '▶ 展開' : '▲ 閉じる';
+
+  if (!isOpen) {
+    const commentsDiv = document.getElementById('rev-card-comments-' + reviewKey);
+    if (commentsDiv && commentsDiv.classList.contains('loader')) {
+      google.script.run
+        .withSuccessHandler(result => {
+          commentsDiv.classList.remove('loader');
+          commentsDiv.innerHTML = _buildReviewCommentsHTML(result);
+        })
+        .withFailureHandler(err => {
+          commentsDiv.classList.remove('loader');
+          commentsDiv.innerHTML = '<p class="error" style="font-size:0.85rem;">取得失敗: ' + err.message + '</p>';
+        })
+        .apiGetReviewComments(reviewKey);
+    }
+  }
+}
+
+function _buildReviewCommentsHTML(result) {
+  if (!result || result.error) return '<p class="error" style="font-size:0.85rem;">' + (result && result.error || 'エラー') + '</p>';
+  const open = result.openCommentsText || '(なし / none)';
+  const conf = result.confidentialCommentsText || '(なし / none)';
+  return `
+    <div style="margin-bottom:1rem;">
+      <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">著者へのコメント / Open Comments</p>
+      <div style="white-space:pre-wrap; background:#f0f7ff; padding:0.875rem; border-radius:6px; border:1px solid #bfdbfe; font-size:0.875rem; line-height:1.7; color:#1e293b;">${open}</div>
+    </div>
+    <div>
+      <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">🔒 コンフィデンシャルコメント / Confidential Comments</p>
+      <div style="white-space:pre-wrap; background:#fffbeb; padding:0.875rem; border-radius:6px; border:1px solid #fcd34d; font-size:0.875rem; line-height:1.7; color:#1e293b;">${conf}</div>
+    </div>`;
+}
+
+/**
+ * 査読者メニュー
+ */
+function renderReviewerView(container) {
+  container.innerHTML = '<h2>査読者メニュー / Reviewer Dashboard</h2><div id="reviewer-content" class="loader">読み込み中...</div>';
+  const _handleReviewer = ms => {
+      const div = document.getElementById('reviewer-content');
+      div.className = '';
+      if (!ms) { div.innerHTML = '<p class="error">データが見つかりませんでした。リンクを確認してください。/ Record not found. Please check your link.</p>'; return; }
+      div.innerHTML = `<div class="status-card">
+        ${buildProgressTimeline(ms._progressStatus)}
+        ${renderManuscriptHeader(ms)}
+        ${renderManuscriptInfoTable(ms, { showAuthors: true, showDeadline: true })}
+        ${(ms.revOk === 'ok' && !ms.Received_At) ? buildReviewMaterialsPanel(ms.folderUrl, ms._reviewMaterialsFolderUrl) : ''}
+        ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
+        ${ms.Received_At ? `
+        <div style="margin-top:1.5rem; padding:1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px;">
+          <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+            <h4 style="margin:0; color:#15803d;">✅ 査読結果受領済み / Review Submitted</h4>
+            <span style="background:${_scoreColor(ms.Score)}; color:#fff; font-size:0.78rem; font-weight:700; padding:3px 12px; border-radius:12px;">${ms.Score || '?'}</span>
+            <span style="font-size:0.85rem; color:#4b7a58;">(${ms.Received_At})</span>
+          </div>
+          <div style="border:1px solid #d1fae5; border-radius:8px; overflow:hidden;">
+            <div onclick="toggleMyReviewCard('${ms.reviewKey}')" style="cursor:pointer; padding:0.6rem 0.9rem; background:#f8fafc; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+              <span style="font-size:0.875rem; font-weight:600; color:#374151;">送信したコメントを確認 / View Your Submitted Comments</span>
+              <span id="rv-my-icon" style="color:#9ca3af; font-size:0.75rem;">▶ 展開</span>
+            </div>
+            <div id="rv-my-body" style="display:none; padding:1rem; border-top:1px solid #d1fae5; background:#fff;">
+              <div id="rv-my-comments" class="loader" style="font-size:0.85rem;">読み込み中...</div>
+              ${ms.reviewerFolderUrl && ms.reviewerFolderUrl !== 'nofile' ? `
+                <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid #f0f0f0;">
+                  <a href="${ms.reviewerFolderUrl}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 添付ファイルを開く / Open Attachments</a>
+                </div>` : ''}
+            </div>
+          </div>
+        </div>
+        ${_buildFinalDecisionBanner(ms)}` : `
+        <form onsubmit="event.preventDefault(); submitRev('${ms.reviewKey}');" style="margin-top:1.5rem;">
+          <div class="form-group"><label>判定 / Score</label><select id="rs" required>${(ms._scoreOptions || ['Accept', 'Minor Revision', 'Major Revision', 'Reject']).map(o => `<option value="${o}">${o}</option>`).join('')}</select></div>
+          <div class="form-group"><label>著者へのコメント / Comments for Author</label><textarea id="roc" rows="5" required placeholder="著者に開示されるコメントを入力してください / These comments will be shared with the author"></textarea></div>
+          <div class="form-group"><label>🔒 コンフィデンシャルコメント / Confidential Comments <span style="font-size:0.8em; color:#64748b;">（編集者・委員長のみ閲覧 / Visible to editor and EIC only）</span></label><textarea id="rcc" rows="4" placeholder="任意 / Optional"></textarea></div>
+          <div class="form-group">
+            <label>📎 添付ファイル / Attachments <span style="font-size:0.8em; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span></label>
+            <input type="file" id="rfiles" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+            <p style="font-size:0.8em; color:#64748b; margin-top:0.25rem;">審査票・コメントファイル等をアップロードできます。/ You can upload review sheets, annotated files, etc.</p>
+          </div>
+          <button type="submit">査読結果を送信 / Submit Review</button>
+        </form>`}
+      </div>`;
+  };
+  const _rvp = _consumePreloadedData();
+  if (_rvp !== null) { _handleReviewer(_rvp); return; }
+  google.script.run
+    .withSuccessHandler(_handleReviewer)
+    .withFailureHandler(err => {
+      const div = document.getElementById('reviewer-content');
+      if (div) { div.className = ''; div.innerHTML = '<p class="error">データ取得エラー: ' + err.message + '</p>'; }
+    })
+    .getManuscriptData('reviewer', USER_KEY);
+}
+
+async function submitRev(key) {
+  const btn = document.querySelector('#reviewer-content button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = '送信中... / Submitting...'; }
+
+  // ファイルをBase64エンコード / Encode files to base64
+  const fileInput = document.getElementById('rfiles');
+  const files = [];
+  if (fileInput && fileInput.files.length > 0) {
+    for (const file of fileInput.files) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        files.push({ name: file.name, mimeType: file.type || 'application/octet-stream', content: base64 });
+      } catch (e) {
+        alert('ファイルの読み込みに失敗しました: ' + file.name + '\n' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '査読結果を送信 / Submit Review'; }
+        return;
+      }
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(() => renderReviewerView(document.getElementById('main-content')))
+    .withFailureHandler(err => {
+      alert('エラー: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = '査読結果を送信 / Submit Review'; }
+    })
+    .apiSubmitReview({
+      reviewKey: key,
+      score: document.getElementById('rs').value,
+      openComments: document.getElementById('roc').value,
+      confidentialComments: document.getElementById('rcc').value,
+      files: files
+    });
+}
+
+/**
+ * EIC：オープンコメント集PDF添付チェックボックスブロックを生成する
+ * @param {Object} ms - 原稿データ
+ * @param {boolean} isFinal - true なら最終確認フォーム用 ID を使う
+ */
+function _buildCommentAttachBox(ms, isFinal) {
+  var ed = (ms._editorList || []).find(function(e) { return e.reportGoogleDocId; });
+  if (!ed) return '';
+  var docId    = ed.reportGoogleDocId || '';
+  var edKey    = ed.editorKey || '';
+  var cbId     = isFinal ? 'eicFinalAttachCommentFile' : 'eicAttachCommentFile';
+  var docFldId = isFinal ? 'finalCommentDocId'         : 'commentDocId';
+  var edFldId  = isFinal ? 'finalCommentEditorKey'     : 'commentEditorKey';
+  return '<input type="hidden" id="' + docFldId + '" value="' + docId + '">'
+       + '<input type="hidden" id="' + edFldId  + '" value="' + edKey  + '">'
+       + '<div class="form-group">'
+       +   '<label>'
+       +     '<input type="checkbox" id="' + cbId + '"> '
+       +     'オープンコメント集PDFを著者メールに添付する / Attach open comments PDF to author email'
+       +   '</label>'
+       + '</div>';
+}
+
+/**
+ * 担当編集者のレポートリンク（PDF・Word）をパネル外に表示するブロック
+ * 査読過程全体に関わる資料として、担当編集者アコーディオンの外に独立して配置する。
+ */
+function buildEditorReportLinksPanel(editorList) {
+  const reported = (editorList || []).filter(e => e.Score && (e.reportPdfUrl || e.reportWordUrl));
+  if (reported.length === 0) return '';
+
+  function linkDiv(url, color, label) {
+    return '<div style="margin-bottom:0.4rem;"><a href="' + url + '" target="_blank" style="font-size:0.9rem; color:' + color + '; text-decoration:none;">' + label + '<\/a><\/div>';
+  }
+
+  var items = [];
+  for (var i = 0; i < reported.length; i++) {
+    var e = reported[i];
+    if (e.reportPdfUrl)        items.push(linkDiv(e.reportPdfUrl, '#2563eb', '📄 レポート（PDF） / Report (PDF)'));
+    if (e.reportWordUrl)       items.push(linkDiv(e.reportWordUrl, '#2563eb', '📝 オープンコメント集（Word） / Open Comments (Word)'));
+    if (e.reportGoogleDocId)   items.push(linkDiv('https://docs.google.com/document/d/' + e.reportGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
+    if (e.reportCommentPdfUrl) items.push(linkDiv(e.reportCommentPdfUrl, '#7c3aed', '📨 送付済みコメントPDF / Sent Comments PDF'));
+  }
+
+  if (items.length === 0) return '';
+
+  return '<div style="margin-top:1.5rem; padding:1rem 1.25rem; background:#eff6ff; border-radius:8px; border:1px solid #bfdbfe;">' +
+    '<h4 style="margin:0 0 0.75rem; font-size:0.875rem; font-weight:700; color:#1e40af; text-transform:uppercase; letter-spacing:0.04em;">📋 査読・編集レポート / Review &amp; Editorial Reports<\/h4>' +
+    items.join('') +
+    '<\/div>';
+}
+
+function buildMeEditorPanel(editorList) {
+  if (!editorList || editorList.length === 0) return '';
+
+  const scoreColor = s => {
+    const v = (s || '').toLowerCase();
+    if (v.includes('accept')) return '#059669';
+    if (v.includes('reject')) return '#dc2626';
+    if (v.includes('major'))  return '#d97706';
+    if (v.includes('minor'))  return '#2563eb';
+    return '#475569';
+  };
+
+  const reported = editorList.filter(e => e.Score);
+  const pending  = editorList.filter(e => !e.Score && e.edtOk === 'ok');
+  if (reported.length === 0 && pending.length === 0) return '';
+
+  const cardsHTML = reported.map((e, i) => {
+    const cardId = `me-ed-card-${i}`;
+    const open = e.Message || '(なし / none)';
+    const conf = e.ConfidentialMessage || '(なし / none)';
+    // PDF・Word リンクはパネル外に表示するため、ここではフォルダリンクのみ
+    const fileLinks = [
+      e.reportFolderUrl ? `<div><a href="${e.reportFolderUrl}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 担当編集者の添付ファイルフォルダ / Editor's Uploaded Files Folder</a></div>` : ''
+    ].filter(Boolean).join('');
+
+    return `
+      <div id="${cardId}" style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; margin-bottom:0.75rem; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <div onclick="toggleMeEditorCard('${cardId}')" style="cursor:pointer; padding:0.75rem 1rem; background:#f8fafc; display:flex; align-items:center; justify-content:space-between; user-select:none;">
+          <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+            <span style="font-weight:600; font-size:0.95rem;">${e.Editor_Name}</span>
+            <span style="background:${scoreColor(e.Score)}; color:#fff; font-size:0.72rem; font-weight:700; padding:2px 10px; border-radius:12px; letter-spacing:0.02em;">${e.Score}</span>
+            ${e.Answer_At ? `<span style="font-size:0.78rem; color:#6b7280;">✓ ${e.Answer_At}</span>` : ''}
+          </div>
+          <span id="${cardId}-icon" style="color:#9ca3af; font-size:0.75rem; flex-shrink:0;">▶ 展開</span>
+        </div>
+        <div id="${cardId}-body" style="display:none; padding:1rem; border-top:1px solid #e2e8f0; background:#fff;">
+          <div style="margin-bottom:1rem;">
+            <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">著者へのコメント / Open Comments</p>
+            <div style="white-space:pre-wrap; background:#f0f7ff; padding:0.875rem; border-radius:6px; border:1px solid #bfdbfe; font-size:0.875rem; line-height:1.7; color:#1e293b;">${open}</div>
+          </div>
+          <div style="${fileLinks ? 'margin-bottom:1rem;' : ''}">
+            <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">🔒 コンフィデンシャルコメント / Confidential Comments</p>
+            <div style="white-space:pre-wrap; background:#fffbeb; padding:0.875rem; border-radius:6px; border:1px solid #fcd34d; font-size:0.875rem; line-height:1.7; color:#1e293b;">${conf}</div>
+          </div>
+          ${fileLinks ? `<div style="padding-top:0.75rem; border-top:1px solid #f0f0f0;">${fileLinks}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  const noReportMsg = reported.length === 0
+    ? `<p style="font-size:0.875rem; color:#6b7280; padding:0.5rem 0;">まだレポートはありません / No report submitted yet.</p>` : '';
+  const pendingHTML = pending.length > 0
+    ? `<p style="font-size:0.875rem; color:#78350f; padding:0.35rem 0;">⏳ ${pending.map(e => e.Editor_Name).join('、')} — レポート未提出 / Report pending</p>` : '';
+
+  return `
+    <div style="margin-top:1.5rem; padding:1rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
+      <h4 style="margin:0 0 1rem; font-size:1rem; font-weight:700; color:#1e293b;">担当編集者のレポート / Editor's Report</h4>
+      ${noReportMsg}${cardsHTML}${pendingHTML}
+    </div>`;
+}
+
+/**
+ * 査読者ビュー：自分の送信済みコメントアコーディオンの開閉
+ */
+function toggleMyReviewCard(reviewKey) {
+  const body = document.getElementById('rv-my-body');
+  const icon = document.getElementById('rv-my-icon');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (icon) icon.textContent = isOpen ? '▶ 展開' : '▲ 閉じる';
+  if (!isOpen) {
+    const commentsDiv = document.getElementById('rv-my-comments');
+    if (commentsDiv && commentsDiv.classList.contains('loader')) {
+      google.script.run
+        .withSuccessHandler(result => { commentsDiv.classList.remove('loader'); commentsDiv.innerHTML = _buildReviewCommentsHTML(result); })
+        .withFailureHandler(err => { commentsDiv.classList.remove('loader'); commentsDiv.innerHTML = '<p class="error" style="font-size:0.85rem;">取得失敗: ' + err.message + '</p>'; })
+        .apiGetReviewComments(reviewKey);
+    }
+  }
+}
+
+/**
+ * 編集幹事用：編集者レポートアコーディオンの開閉
+ */
+function toggleMeEditorCard(cardId) {
+  const body = document.getElementById(cardId + '-body');
+  const icon = document.getElementById(cardId + '-icon');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (icon) icon.textContent = isOpen ? '▶ 展開' : '▲ 閉じる';
+}
+
+/**
+ * 編集幹事メニュー / Managing Editor Dashboard
+ */
+function renderManagingEditorView(container) {
+  container.innerHTML = '<h2>編集幹事メニュー / Managing Editor Dashboard</h2><div id="me-content" class="loader">読み込み中...</div>';
+  const _handleMe = ms => {
+    const div = document.getElementById('me-content');
+    div.className = '';
+
+    // 送信済みの場合は確認表示
+    const sentAt = ms.managingEditorSentAt || ms.ManagingEditorSentAt || '';
+    const _meFileUrl = ms.managingEditorFileUrl || ms.ManagingEditorFileUrl || '';
+    const formOrConfirm = sentAt ? `
+      <div style="margin-top:1.5rem; padding:1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px;">
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
+          <h4 style="margin:0; color:#15803d;">✅ 送信済み / Already Submitted</h4>
+          <span style="font-size:0.85rem; color:#4b7a58;">(${sentAt})</span>
+        </div>
+        <div style="margin-bottom:1rem;">
+          <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">① 著者宛コメント / Comment for Author</p>
+          <div style="white-space:pre-wrap; background:#f0f7ff; padding:0.875rem; border-radius:6px; border:1px solid #bfdbfe; font-size:0.875rem; line-height:1.7; color:#1e293b;">${ms.managingEditorAuthorComment || ms.ManagingEditorAuthorComment || '(なし / none)'}</div>
+        </div>
+        <div style="${_meFileUrl ? 'margin-bottom:1rem;' : ''}">
+          <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">② 委員長・内部用コメント / Internal Comment to EIC</p>
+          <div style="white-space:pre-wrap; background:#fffbeb; padding:0.875rem; border-radius:6px; border:1px solid #fcd34d; font-size:0.875rem; line-height:1.7; color:#1e293b;">${ms.managingEditorInternalComment || ms.ManagingEditorInternalComment || '(なし / none)'}</div>
+        </div>
+        ${_meFileUrl ? '<div style="padding-top:0.75rem; border-top:1px solid #d1fae5;"><a href="' + _meFileUrl + '" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 添付ファイルを開く / Open Attachments</a></div>' : ''}
+      </div>` : `
+      <div style="margin-top:1.5rem; padding:1.25rem; background:#eff6ff; border:2px solid #93c5fd; border-radius:8px;">
+        <h4 style="margin:0 0 0.25rem; color:#1d4ed8;">✉️ 委員長へのチェック結果送信 / Send Review to EIC</h4>
+        <p style="margin:0 0 1.25rem; font-size:0.875rem; color:#374151;">査読結果と原稿を確認し、委員長へのコメントを入力してください。</p>
+        <form onsubmit="event.preventDefault(); submitMeReview('${ms.managingEditorKey || USER_KEY}');">
+          <div class="form-group">
+            <label>① 著者宛コメント / Comment for Author</label>
+            <textarea id="ma" rows="5" placeholder="著者に開示されるコメント（任意）/ Optional — shared with author"></textarea>
+          </div>
+          <div class="form-group">
+            <label>② 委員長・内部用コメント / Internal Comment to EIC *
+              <span style="font-size:0.8em; font-weight:400; color:#64748b;">（著者には非開示 / Not shared with author）</span>
+            </label>
+            <textarea id="mi" rows="5" required placeholder="委員長への所見・判断根拠など（必須）/ Required — for EIC only"></textarea>
+          </div>
+          <div class="form-group">
+            <label>📎 添付ファイル / Attachments
+              <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span>
+            </label>
+            <input type="file" id="mf" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+          </div>
+          <button type="submit" id="msb" style="background:#1d4ed8; color:#fff; padding:12px 28px; border:none; border-radius:6px; font-weight:600; font-size:1rem; cursor:pointer;">
+            委員長へ送信 / Send to EIC
+          </button>
+        </form>
+      </div>`;
+
+    div.innerHTML = `
+      <div class="status-card">
+        ${buildProgressTimeline(ms._progressStatus)}
+        ${renderManuscriptHeader(ms)}
+        ${renderManuscriptInfoTable(ms, { showAuthors: true })}
+        ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
+        ${(ms.LetterToEditor || ms.letterToEditor) ? `
+          <div style="margin-top:1rem; padding:1rem; background:#fff7ed; border:1px solid #f97316; border-radius:8px;">
+            <p style="margin:0 0 0.4rem; font-size:0.78rem; font-weight:700; color:#c2410c; text-transform:uppercase;">著者からのレター / Cover Letter</p>
+            <p style="white-space:pre-wrap; font-size:0.9rem; margin:0; color:#1e293b;">${ms.LetterToEditor || ms.letterToEditor}</p>
+          </div>` : ''}
+        ${buildEditorReviewResultsPanel(ms._reviewerList || [])}
+        ${buildMeEditorPanel(ms._editorList || [])}
+        ${buildEditorReportLinksPanel(ms._editorList || [])}
+        ${formOrConfirm}
+        ${_buildFinalDecisionBanner(ms)}
+      </div>`;
+  };
+  const _mp = _consumePreloadedData();
+  if (_mp !== null) { _handleMe(_mp); return; }
+  google.script.run
+    .withSuccessHandler(_handleMe)
+    .withFailureHandler(err => { const d = document.getElementById('me-content'); if (d) { d.className = ''; d.innerHTML = '<p class="error">データ取得エラー: ' + err.message + '</p>'; } })
+    .getManuscriptData('managing-editor', USER_KEY);
+}
+
+async function submitMeReview(key) {
+  const btn = document.getElementById('msb');
+  if (btn) { btn.disabled = true; btn.textContent = '送信中... / Submitting...'; btn.style.background = '#94a3b8'; btn.style.cursor = 'not-allowed'; }
+
+  // ファイルをBase64エンコード
+  const fileInput = document.getElementById('mf');
+  const files = [];
+  if (fileInput && fileInput.files.length > 0) {
+    for (const file of fileInput.files) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        files.push({ name: file.name, mimeType: file.type || 'application/octet-stream', content: base64 });
+      } catch (e) {
+        alert('ファイルの読み込みに失敗しました: ' + file.name + '\n' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '委員長へ送信 / Send to EIC'; btn.style.background = '#1d4ed8'; btn.style.cursor = 'pointer'; }
+        return;
+      }
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(() => renderManagingEditorView(document.getElementById('main-content')))
+    .withFailureHandler(err => {
+      alert('エラー: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = '委員長へ送信 / Send to EIC'; btn.style.background = '#1d4ed8'; btn.style.cursor = 'pointer'; }
+    })
+    .apiSubmitManagingEditorReview({
+      managingEditorKey: key,
+      authorComment:     document.getElementById('ma').value,
+      internalComment:   document.getElementById('mi').value,
+      files:             files
+    });
+}
+
+/**
+ * 判定種別セレクト変更時：ルートb ボタンの有効/無効を切り替える
+ * ルートb は isAccepted="yes" かつ allowsResubmit="no" の場合のみ有効
+ */
+function onEicDecisionChange(select) {
+  const selected = select.options[select.selectedIndex];
+  const isAccepted     = selected && selected.getAttribute('data-accepted')  === 'yes';
+  const allowsResubmit = selected && selected.getAttribute('data-resubmit')  === 'yes';
+  const canRouteB = isAccepted && !allowsResubmit;  // ルートb = 受理かつ再投稿なし
+  const canRouteA = !canRouteB;                     // ルートa = それ以外（常に逆）
+
+  const btnA = document.getElementById('eic-route-a-btn');
+  const btnB = document.getElementById('eic-route-b-btn');
+
+  if (btnA) {
+    btnA.disabled        = !canRouteA;
+    btnA.style.background = canRouteA ? '#2563eb' : '#94a3b8';
+    btnA.style.cursor     = canRouteA ? 'pointer'  : 'not-allowed';
+    btnA.title = canRouteA ? '' : '受理（再投稿なし）の場合はルートbを使用してください / Use Route b for Accept without resubmission';
+  }
+  if (btnB) {
+    btnB.disabled        = !canRouteB;
+    btnB.style.background = canRouteB ? '#059669' : '#94a3b8';
+    btnB.style.cursor     = canRouteB ? 'pointer'  : 'not-allowed';
+    btnB.title = canRouteB ? '' : '受理かつ再投稿なしの判定を選んだ場合のみ押せます / Available only for Accept without resubmission';
+  }
+
+  // 印刷担当者コメント欄の有効/無効切替
+  const prodComment = document.getElementById('eicProductionComment');
+  if (prodComment) {
+    prodComment.disabled = !canRouteB;
+    prodComment.style.background = canRouteB ? '#fff' : '#f1f5f9';
+    prodComment.style.color      = canRouteB ? '#1e293b' : '#94a3b8';
+    prodComment.style.cursor     = canRouteB ? 'text' : 'not-allowed';
+    prodComment.placeholder      = canRouteB
+      ? '印刷担当者に送付されるコメント / These comments will be sent to the production editor'
+      : 'ルートb（印刷担当者送付）選択時に入力可 / Available when Route b is selected';
+  }
+}
+
+/**
+ * EIC ボタン復元ヘルパー（エラー時に呼ぶ）
+ * ルートa は常に有効、ルートb は select の現在値から再評価
+ */
+function _restoreEicButtons(btnA, btnB) {
+  if (btnA) btnA.textContent = '[ルートa] 投稿者に差し戻す / Return to Author';
+  if (btnB) btnB.textContent = '[ルートb] 印刷担当者に送る / Send to Production';
+  // 有効/無効の状態はセレクトの現在値から再評価して正確に復元
+  const sel = document.getElementById('eicDecision');
+  if (sel) onEicDecisionChange(sel);
+}
+
+/**
+ * 委員長最終判断送信
+ */
+async function submitEicFinalAction(route) {
+  const decision = document.getElementById('eicDecision') ? document.getElementById('eicDecision').value : '';
+  if (route === 'a' && !decision) { alert('判定種別を選んでください / Please select a decision type.'); return; }
+  if (!confirm('実行しますか？ / Proceed?')) return;
+
+  const btnA = document.getElementById('eic-route-a-btn');
+  const btnB = document.getElementById('eic-route-b-btn');
+  const activeBtn = route === 'a' ? btnA : btnB;
+  const activeBtnColor = route === 'a' ? '#2563eb' : '#059669';
+  const activeBtnLabel = route === 'a' ? '[ルートa] 投稿者に差し戻す / Return to Author' : '[ルートb] 印刷担当者に送る / Send to Production';
+
+  // 両ボタンを無効化
+  [btnA, btnB].forEach(b => { if (b) { b.disabled = true; b.style.background = '#94a3b8'; b.style.cursor = 'not-allowed'; } });
+  if (activeBtn) activeBtn.textContent = '送信中... / Sending...';
+
+  const fileInput = document.getElementById('eicFinalFiles');
+  const files = [];
+  if (fileInput && fileInput.files.length > 0) {
+    for (const file of fileInput.files) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        files.push({ name: file.name, mimeType: file.type || 'application/octet-stream', content: base64 });
+      } catch (e) {
+        alert('ファイルの読み込みに失敗しました: ' + file.name + '\n' + e.message);
+        _restoreEicButtons(btnA, btnB);
+        return;
+      }
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(() => renderAuthorView(document.getElementById('main-content')))
+    .withFailureHandler(err => {
+      alert('エラー: ' + err.message);
+      _restoreEicButtons(btnA, btnB);
+    })
+    .apiEicFinalAction({
+      eicKey: USER_KEY, route, decision,
+      eicAuthorComment:     document.getElementById('eicAuthorComment').value,
+      eicProductionComment: document.getElementById('eicProductionComment').value,
+      files,
+      attachCommentFile: !!(document.getElementById('eicFinalAttachCommentFile') && document.getElementById('eicFinalAttachCommentFile').checked),
+      commentDocId:      (document.getElementById('finalCommentDocId')      || {}).value || '',
+      commentEditorKey:  (document.getElementById('finalCommentEditorKey')  || {}).value || ''
+    });
+}
+
+/**
+ * 再投稿フォーム
+ */
+function renderResubmissionForm(container, ms) {
+  // 投稿種別の選択肢を非同期で取得してからフォームを描画する
+  container.innerHTML = '<div class="loader" style="padding:2rem;">フォームを読み込み中... / Loading form...</div>';
+  const cached = window.MANUSCRIPT_TYPES && window.MANUSCRIPT_TYPES.length > 0
+    ? window.MANUSCRIPT_TYPES : null;
+  if (cached) {
+    _renderResubmissionFormInner(container, ms, cached);
+  } else {
+    google.script.run
+      .withSuccessHandler(types => {
+        window.MANUSCRIPT_TYPES = types;
+        _renderResubmissionFormInner(container, ms, types);
+      })
+      .withFailureHandler(err => {
+        // 取得失敗時は空の選択肢でフォームを描画（手動入力は不可だが他項目は使える）
+        console.warn('getManuscriptTypes failed:', err);
+        _renderResubmissionFormInner(container, ms, []);
+      })
+      .getManuscriptTypes();
+  }
+}
+
+function _renderResubmissionFormInner(container, ms, manuscriptTypes) {
+  // HTML属性・テキストコンテンツ用エスケープ
+  const ev = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const current = ms.MsVer || ms.MS_ID || 'Unknown';
+  let next = current;
+  try {
+    const parts = current.split('-');
+    const last = parseInt(parts[parts.length - 1]);
+    if (!isNaN(last)) { parts[parts.length - 1] = last + 1; next = parts.join('-'); } else { next = current + '-2'; }
+  } catch(e) { next = current + '-2'; }
+
+  // 前回値のマッピング
+  const prev = {
+    authorName:        ev(ms.CA_Name        || ms.authorName        || ''),
+    authorEmail:       ev(ms.CA_Email       || ms.authorEmail       || ''),
+    authorAffiliation: ev(ms.CA_Affiliation || ms.authorAffiliation || ''),
+    authorAddress:     ev(ms.Address        || ms.authorAddress     || ''),
+    authorsJp:         ev(ms.AuthorsJP      || ms.authorsJp         || ''),
+    authorsEn:         ev(ms.AuthorsEN      || ms.authorsEn         || ''),
+    ccEmails:          ev(ms.ccEmails       || ''),
+    paperType:         ev(ms.MS_Type        || ms.paperType         || ''),
+    titleJp:           ev(ms.TitleJP        || ms.titleJp           || ''),
+    titleEn:           ev(ms.TitleEN        || ms.titleEn           || ''),
+    runningTitle:      ev(ms.RunningTitle   || ms.runningTitle      || ''),
+    abstractJp:        ev(ms.AbstractJP     || ms.abstractJp        || ''),
+    abstractEn:        ev(ms.AbstractEN     || ms.abstractEn        || ''),
+    englishEditing:    ev(ms['English_editing'] || ''),
+    reprintRequest:    ev(ms['Reprint request'] || '0')
+  };
+
+  // 投稿種別の選択肢（前回値を選択済みに）
+  const types = manuscriptTypes || [];
+  const typeOptions = types.map(t =>
+    `<option value="${ev(t.label)}" ${t.label === prev.paperType ? 'selected' : ''}>${ev(t.label)}</option>`
+  ).join('');
+
+  // 英文校閲の選択肢
+  const eeOpts = ['', '要', '不要'].map(v => {
+    const label = v === '' ? '-- 選択してください --' : v === '要' ? '要 / Required' : '不要 / Not required';
+    return `<option value="${v}" ${v === prev.englishEditing ? 'selected' : ''}>${label}</option>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="form-section">
+      <h2 style="margin-bottom:0.75rem;">修正原稿の再投稿 / Resubmission</h2>
+      <p style="background:#f1f5f9; padding:0.5rem 1rem; border-radius:4px; margin-bottom:1.5rem; font-size:0.9rem;">
+        対象 / Target: <strong>${ev(current)}</strong> ➔ 次回バージョン / Next version: <strong>${ev(next)}</strong>
+      </p>
+      <p style="background:#fffbeb; border:1px solid #fcd34d; padding:0.75rem 1rem; border-radius:6px; margin-bottom:2rem; font-size:0.875rem; color:#92400e; line-height:1.6;">
+        ℹ️ 前回の入力内容があらかじめ入力されています。変更がある場合は修正のうえ送信してください。<br>
+        <span style="font-size:0.85rem; color:#78350f;">All fields are pre-filled with your previous submission. Please update any items that have changed.</span>
+      </p>
+
+      <form id="rsb-form" onsubmit="event.preventDefault(); subResub('${ev(ms.key)}');">
+
+        <!-- ① 査読者・編集者への回答（新規必須項目） -->
+        <div class="form-section" style="border:2px solid #3b82f6; border-radius:8px; padding:1rem 1.25rem; margin-bottom:2rem;">
+          <h3 style="color:#1d4ed8; margin-bottom:0.75rem;">査読者・編集者への回答 / Response to Reviewers &amp; Editors</h3>
+          <div class="form-group">
+            <label>指摘事項への回答 / Point-by-point Response *</label>
+            <textarea id="rsb-response" rows="8" required
+              placeholder="各指摘事項に対する回答と、どのように修正したかを説明してください。&#10;Please provide a point-by-point response to each comment and describe the revisions made."></textarea>
+            <p class="hint" style="margin-top:0.4rem;">
+              ※ 回答をこのテキストボックスに直接入力する代わりに、回答をまとめたファイルを下の「提出書類」セクションから添付する形でも構いません。<br>
+              You may also submit your response as an attached file in the "Files" section below, instead of typing it here.
+            </p>
+          </div>
+        </div>
+
+        <!-- ② 著者情報 -->
+        <div class="form-section">
+          <h3>著者情報 / Author Information</h3>
+          <div class="form-group">
+            <label>責任著者氏名 / Corresponding Author Name *</label>
+            <input type="text" id="rsb-authorName" value="${prev.authorName}" required>
+          </div>
+          <div class="form-group">
+            <label>責任著者メールアドレス / Corresponding Author Email *</label>
+            <input type="email" id="rsb-authorEmail" value="${prev.authorEmail}" required>
+          </div>
+          <div class="form-group">
+            <label>所属機関 / Affiliation</label>
+            <input type="text" id="rsb-authorAffiliation" value="${prev.authorAffiliation}">
+          </div>
+          <div class="form-group">
+            <label>住所 / Postal Address</label>
+            <input type="text" id="rsb-authorAddress" value="${prev.authorAddress}">
+          </div>
+          <div class="form-group">
+            <label>著者一覧 (日) / Authors (JP)</label>
+            <input type="text" id="rsb-authorsJp" value="${prev.authorsJp}" placeholder="著者1, 著者2...">
+          </div>
+          <div class="form-group">
+            <label>著者一覧 (英) / Authors (EN)</label>
+            <input type="text" id="rsb-authorsEn" value="${prev.authorsEn}" placeholder="Author 1, Author 2...">
+          </div>
+          <div class="form-group">
+            <label>共著者メールアドレス / CC Emails (Co-authors)</label>
+            <input type="text" id="rsb-ccEmails" value="${prev.ccEmails}" placeholder="email1@example.com, email2@example.com">
+            <p class="hint">カンマ区切りで入力してください。</p>
+          </div>
+        </div>
+
+        <!-- ③ 原稿情報 -->
+        <div class="form-section">
+          <h3>原稿情報 / Manuscript Details</h3>
+          <div class="form-group">
+            <label>投稿種別 / Paper Type *</label>
+            <select id="rsb-paperType" required>
+              <option value="">-- 選択してください --</option>
+              ${typeOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>論文タイトル (日) / Title (JP) *</label>
+            <input type="text" id="rsb-titleJp" value="${prev.titleJp}" required>
+          </div>
+          <div class="form-group">
+            <label>論文タイトル (英) / Title (EN) *</label>
+            <input type="text" id="rsb-titleEn" value="${prev.titleEn}" required>
+          </div>
+          <div class="form-group">
+            <label>ランニングタイトル / Running Title</label>
+            <input type="text" id="rsb-runningTitle" value="${prev.runningTitle}">
+          </div>
+          <div class="form-group">
+            <label>要旨 (日) / Abstract (JP)</label>
+            <textarea id="rsb-abstractJp" rows="4">${prev.abstractJp}</textarea>
+          </div>
+          <div class="form-group">
+            <label>要旨 (英) / Abstract (EN)</label>
+            <textarea id="rsb-abstractEn" rows="4">${prev.abstractEn}</textarea>
+          </div>
+        </div>
+
+        <!-- ④ 提出書類 -->
+        <div class="form-section">
+          <h3>提出書類 / Files</h3>
+          <div style="padding:0.85rem 1rem; background:#fef3c7; border:1px solid #fbbf24; border-radius:8px; margin-bottom:1.25rem; font-size:0.875rem; line-height:1.7; color:#92400e;">
+            ⚠️ <strong>修正した原稿とともに、前回の査読者・編集者の指摘事項に対する回答を記したファイルもあわせてアップロードしてください。</strong><br>
+            <span style="color:#78350f;">Please upload both your <strong>revised manuscript</strong> and a file containing your <strong>point-by-point responses</strong> to the reviewers' and editor's comments.</span>
+          </div>
+          <div class="form-group">
+            <label>修正原稿・回答ファイル / Revised Manuscript &amp; Response Files *</label>
+            <input type="file" id="rsb-files" multiple required>
+            <p class="hint">複数ファイルを選択できます。PDF, DOCX など / Multiple files can be selected. PDF, DOCX, etc.</p>
+          </div>
+        </div>
+
+        <!-- ⑤ その他 -->
+        <div class="form-section">
+          <h3>その他 / Additional Information</h3>
+          <div class="form-group">
+            <label>英文校閲 / English Editing</label>
+            <select id="rsb-englishEditing">${eeOpts}</select>
+          </div>
+          <div class="form-group">
+            <label>別刷り部数 / Reprint Copies</label>
+            <input type="number" id="rsb-reprintRequest" value="${prev.reprintRequest}" min="0" placeholder="0">
+            <p class="hint">不要の場合は 0 を入力してください。</p>
+          </div>
+        </div>
+
+        <div style="margin-top:2rem;">
+          <button type="submit" id="rsb" style="background:var(--success);">再投稿を完了する / Submit Revision</button>
+        </div>
+      </form>
+    </div>`;
+}
+
+async function subResub(key) {
+  const btn = document.getElementById('rsb');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '送信中... / Submitting...';
+  btn.style.background = '#94a3b8';
+  btn.style.cursor = 'not-allowed';
+
+  // ファイルの読み込み
+  const fileInput = document.getElementById('rsb-files');
+  const fd = [];
+  try {
+    for (let i = 0; i < fileInput.files.length; i++) {
+      const b64 = await toBase64(fileInput.files[i]);
+      fd.push({ name: fileInput.files[i].name, mimeType: fileInput.files[i].type, content: b64.split(',')[1] });
+    }
+  } catch(e) {
+    alert('ファイルの読み込みに失敗しました: ' + e.message);
+    btn.disabled = false; btn.textContent = originalText; btn.style.background = ''; btn.style.cursor = '';
+    return;
+  }
+
+  const data = {
+    msKey:             key,
+    letterToEditor:    document.getElementById('rsb-response').value,
+    authorName:        document.getElementById('rsb-authorName').value,
+    authorEmail:       document.getElementById('rsb-authorEmail').value,
+    authorAffiliation: document.getElementById('rsb-authorAffiliation').value,
+    authorAddress:     document.getElementById('rsb-authorAddress').value,
+    authorsJp:         document.getElementById('rsb-authorsJp').value,
+    authorsEn:         document.getElementById('rsb-authorsEn').value,
+    ccEmails:          document.getElementById('rsb-ccEmails').value,
+    paperType:         document.getElementById('rsb-paperType').value,
+    titleJp:           document.getElementById('rsb-titleJp').value,
+    titleEn:           document.getElementById('rsb-titleEn').value,
+    runningTitle:      document.getElementById('rsb-runningTitle').value,
+    abstractJp:        document.getElementById('rsb-abstractJp').value,
+    abstractEn:        document.getElementById('rsb-abstractEn').value,
+    englishEditing:    document.getElementById('rsb-englishEditing').value,
+    reprintRequest:    document.getElementById('rsb-reprintRequest').value,
+    files:             fd
+  };
+
+  google.script.run
+    .withSuccessHandler(result => {
+      const main = document.getElementById('main-content');
+      main.innerHTML = `
+        <div class="success-message" style="text-align:center; padding:3rem 1rem;">
+          <div style="font-size:4rem; margin-bottom:1rem;">✅</div>
+          <h2 style="margin-bottom:1rem;">再投稿を受け付けました / Resubmission Received</h2>
+          <p>修正原稿を受け付けました。受領通知メールをお送りしましたのでご確認ください。</p>
+          <p style="color:#64748b; font-size:0.9rem;">Your revised manuscript has been received. Please check your email for the confirmation notice.</p>
+          <div class="status-card" style="text-align:left; border-top:5px solid var(--success); margin:1.5rem 0;">
+            <p><strong>原稿ID / MS ID:</strong> ${result.msVer || ''}</p>
+            <p style="margin-top:0.5rem; font-size:0.9rem; color:var(--secondary);">
+              審査の進捗は受領メールに記載のリンクからご確認いただけます。<br>
+              You can track the review progress via the link in your confirmation email.
+            </p>
+          </div>
+          <button onclick="window.close()" style="margin-top:1.5rem; background:#64748b; color:white; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; width:auto !important;">ウィンドウを閉じる / Close Window</button>
+          <p style="margin-top:1rem; font-size:0.82rem; color:#94a3b8;">閉じない場合はブラウザの「×」で閉じてください。</p>
+        </div>`;
+    })
+    .withFailureHandler(err => {
+      alert('エラー: ' + err.message);
+      btn.disabled = false; btn.textContent = originalText; btn.style.background = ''; btn.style.cursor = '';
+    })
+    .apiSubmitResubmission(data);
+}
+
+function toggleAbstract(id) {
+  const d = document.getElementById(id); const i = document.getElementById(id+'-icon'); const l = document.getElementById(id+'-label');
+  if(d.style.display==='none'){ d.style.display='block'; i.textContent='▼'; l.textContent='要旨を隠す / Hide Abstract'; }else{ d.style.display='none'; i.textContent='▶'; l.textContent='要旨を見る / View Abstract'; }
+}
+
+function toBase64(file) { return new Promise((resolve, reject) => { const r = new FileReader(); r.readAsDataURL(file); r.onload = () => resolve(r.result); r.onerror = e => reject(e); }); }
+
+async function submitFeedback(k) {
+  const scoreEl = document.getElementById('finalScore');
+  const s = scoreEl.value;
+  const c = document.getElementById('feedbackComments').value;
+  if (!s) { alert('判定を選択してください / Please select a score.'); return; }
+
+  // 「最終承認・再投稿不可」の判定はME（編集幹事）の最終確認ルートへ自動転送される。
+  // EIC が予期せずダイアログを見ることのないよう、確認文言を切り替える。
+  let meRedirectScores = [];
+  try {
+    meRedirectScores = JSON.parse(scoreEl.getAttribute('data-me-redirect-scores') || '[]');
+  } catch (e) { meRedirectScores = []; }
+  const isMeRedirect = meRedirectScores.indexOf(s) !== -1;
+
+  if (isMeRedirect) {
+    const meMsg =
+      '⚠️ 編集幹事の最終確認が済んでいないため、著者に返す前に編集幹事に送ります。\n' +
+      'その後、編集幹事のチェックを経て、編集委員長にもう一度確認していただき、最終的に著者へ送信されます。\n' +
+      'この時点では著者・印刷担当者には通知されません。\n\n' +
+      'The Managing Editor has not yet performed the final check, so this submission will first be forwarded to the Managing Editor (NOT to the author).\n' +
+      'After the Managing Editor reviews it, you (the EIC) will be asked to confirm once more before it is sent to the author.\n' +
+      'The author and the production editor will NOT be notified at this stage.\n\n' +
+      'このまま編集幹事へ送信してよろしいですか？ / Proceed and send to the Managing Editor?';
+    if (!confirm(meMsg)) return;
+  } else {
+    if (!confirm('判定通知を送りますか？ / Send decision to author?')) return;
+  }
+
+  const btn = document.getElementById('feedback-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '送信中... / Sending...'; btn.style.background = '#94a3b8'; btn.style.cursor = 'not-allowed'; }
+
+  const fileInput = document.getElementById('eicFeedbackFiles');
+  const files = [];
+  if (fileInput && fileInput.files.length > 0) {
+    for (const file of fileInput.files) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        files.push({ name: file.name, mimeType: file.type || 'application/octet-stream', content: base64 });
+      } catch (e) {
+        alert('ファイルの読み込みに失敗しました: ' + file.name + '\n' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '判定通知を送信 / Send Decision'; btn.style.background = '#d97706'; btn.style.cursor = 'pointer'; }
+        return;
+      }
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(result => {
+      if (result && result.redirectedToME) {
+        _showMERedirectNotice();
+      } else {
+        renderAuthorView(document.getElementById('main-content'));
+      }
+    })
+    .withFailureHandler(err => {
+      alert('エラー: ' + (err && err.message ? err.message : String(err)));
+      if (btn) { btn.disabled = false; btn.textContent = '判定通知を送信 / Send Decision'; btn.style.background = '#d97706'; btn.style.cursor = 'pointer'; }
+    })
+    .apiSubmitFeedback({
+      msKey: k, score: s, openComments: c, files,
+      attachCommentFile: !!(document.getElementById('eicAttachCommentFile') && document.getElementById('eicAttachCommentFile').checked),
+      commentDocId:      (document.getElementById('commentDocId')      || {}).value || '',
+      commentEditorKey:  (document.getElementById('commentEditorKey')  || {}).value || ''
+    });
+}
+
+/**
+ * 通常ルートで最終承認が選択され、MEルートへ自動転送された際に表示する説明パネル。
+ * 著者・印刷担当者にはまだ通知されていないこと、次のステップを案内する。
+ */
+function _showMERedirectNotice() {
+  const main = document.getElementById('main-content');
+  if (!main) return;
+  main.innerHTML = `
+    <div style="max-width:720px; margin:3rem auto; padding:0 1rem;">
+      <div style="background:#fffbeb; border:2px solid #f59e0b; border-radius:12px; padding:2rem 2.25rem;">
+
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
+          <span style="font-size:2rem;">📋</span>
+          <h2 style="margin:0; font-size:1.25rem; font-weight:700; color:#92400e;">
+            編集幹事ルートへ転送しました<br>
+            <span style="font-size:0.95rem; font-weight:500; color:#b45309;">Forwarded to Managing Editor Route</span>
+          </h2>
+        </div>
+
+        <div style="background:#fff; border-radius:8px; padding:1.25rem 1.5rem; margin-bottom:1.25rem; border:1px solid #fcd34d;">
+          <p style="margin:0 0 0.75rem; font-size:0.95rem; color:#1e293b; line-height:1.6;">
+            選択された判定は <strong>最終承認（受理・再投稿なし）</strong> です。このケースは編集幹事（Managing Editor）のチェックが必要なため、自動的に編集幹事ルートへ転送されました。
+          </p>
+          <p style="margin:0; font-size:0.95rem; color:#1e293b; line-height:1.6;">
+            The selected decision is <strong>Final Acceptance (no resubmission)</strong>. This requires a review by the Managing Editor, so the process has been automatically forwarded to the Managing Editor route.
+          </p>
+        </div>
+
+        <div style="background:#fef2f2; border-radius:8px; padding:1.25rem 1.5rem; margin-bottom:1.25rem; border:1px solid #fca5a5;">
+          <p style="margin:0 0 0.5rem; font-weight:700; font-size:0.875rem; color:#991b1b; text-transform:uppercase; letter-spacing:0.04em;">⚠️ 現時点での通知状況 / Notification Status</p>
+          <ul style="margin:0; padding-left:1.25rem; font-size:0.9rem; color:#7f1d1d; line-height:1.8;">
+            <li>著者への通知：<strong>未送信</strong> / Author notification: <strong>NOT yet sent</strong></li>
+            <li>印刷担当者への通知：<strong>未送信</strong> / Production editor notification: <strong>NOT yet sent</strong></li>
+          </ul>
+        </div>
+
+        <div style="background:#f0fdf4; border-radius:8px; padding:1.25rem 1.5rem; margin-bottom:1.75rem; border:1px solid #86efac;">
+          <p style="margin:0 0 0.5rem; font-weight:700; font-size:0.875rem; color:#166534; text-transform:uppercase; letter-spacing:0.04em;">✅ 次のステップ / Next Steps</p>
+          <ol style="margin:0; padding-left:1.25rem; font-size:0.9rem; color:#14532d; line-height:1.8;">
+            <li>編集幹事にダッシュボードリンクを記載した通知メールを送信しました。<br>
+                <span style="color:#166534;">The Managing Editor has been notified by email with a dashboard link.</span></li>
+            <li>編集幹事がレビューを提出すると、編集委員長宛に通知が届きます。<br>
+                <span style="color:#166534;">Once the Managing Editor submits their review, you will receive a notification.</span></li>
+            <li>その後、編集委員長ダッシュボードから「Route B（印刷担当者へ送付）」を実行してください。<br>
+                <span style="color:#166534;">You can then proceed with "Route B (Send to Production Editor)" from the EIC dashboard.</span></li>
+          </ol>
+        </div>
+
+        <div style="text-align:center;">
+          <button
+            onclick="renderAuthorView(document.getElementById('main-content'))"
+            style="background:#d97706; color:#fff; padding:10px 28px; border:none; border-radius:8px; font-weight:600; font-size:0.95rem; cursor:pointer;">
+            ダッシュボードに戻る / Back to Dashboard
+          </button>
+        </div>
+
+      </div>
+    </div>
+  `;
+}
+
+function handleArchiveClick(msId, key) {
+  if(!confirm('アーカイブしますか？')) return;
+  google.script.run
+    .withSuccessHandler(() => {
+      const main = document.getElementById('main-content');
+      if (USER_ROLE === 'Managing-Editor') {
+        renderManagingEditorView(main);
+      } else {
+        renderAuthorView(main);
+      }
+    })
+    .withFailureHandler(err => alert('エラー: ' + err.message))
+    .apiArchiveManuscript(key);
+}
+
+function handleStopByEicClick() {
+  if(!confirm('この原稿の審査を停止しますか？\n著者への連絡は委員長が直接メールで行ってください。')) return;
+  google.script.run
+    .withSuccessHandler(() => renderAuthorView(document.getElementById('main-content')))
+    .withFailureHandler(err => alert('エラー: ' + err.message))
+    .apiStopManuscriptByEic({ eicKey: USER_KEY });
+}
+
+/**
+ * 新規投稿は renderNewAuthorForm (省略せずに実装が必要な場合は別途)
+ */
+/**
+ * 新規投稿フォームのレンダリング
+ */
+function renderNewAuthorForm(container) {
+  const testData = IS_TEST_MODE ? {
+    authorName: 'テスト 太郎',
+    authorEmail: '',
+    authorAffiliation: 'テスト大学 合理学研究科',
+    authorAddress: '東京都千代田区1-1-1',
+    authorsJp: 'テスト太郎、サンプル次郎',
+    authorsEn: 'Taro Test, Jiro Sample',
+    ccEmails: 'jiro.sample@example.com, saburo.test@example.com',
+    titleJp: '【テスト投稿】システムの動作確認用タイトル',
+    titleEn: '[Test Submission] Title for system verification',
+    runningTitle: 'システム検証用ランニングタイトル',
+    abstractJp: 'これはシステムの新規投稿フローをテストするための要旨です。複数行の入力にも対応しています。',
+    abstractEn: 'This is a test abstract for the new submission flow. It supports multi-line input and is used for system verification.',
+    letterToEditor: '編集委員長殿、本原稿の査読をお願い申し上げます。',
+    englishEditing: '不要',
+    reprintRequest: '0'
+  } : {
+    authorName: '', authorEmail: '', authorAffiliation: '', authorAddress: '',
+    authorsJp: '', authorsEn: '', ccEmails: '',
+    titleJp: '', titleEn: '', runningTitle: '',
+    abstractJp: '', abstractEn: '', letterToEditor: '',
+    englishEditing: '', reprintRequest: ''
+  };
+
+  const types = window.MANUSCRIPT_TYPES || [];
+  const typeOptions = types.map(t => `<option value="${t.label}">${t.label}</option>`).join('');
+
+  container.innerHTML = `
+    <div class="form-section">
+      <h2 style="margin-bottom:1.5rem;">新規投稿${IS_TEST_MODE ? ' (テストモード)' : ''} / New Submission${IS_TEST_MODE ? ' (Test Mode)' : ''}</h2>
+      ${IS_TEST_MODE ? `<p style="background:#fffbeb; border:1px solid #fcd34d; padding:1rem; border-radius:8px; margin-bottom:2rem; font-size:0.9rem; color:#92400e;">
+        <strong>テストモードが有効です。</strong> 項目があらかじめ入力されています。責任著者のメールアドレスのみ入力して送信してください。<br>
+        *共著者のメールアドレスは example.com ドメインに設定されています。
+      </p>` : ''}
+
+      <form id="submission-form" onsubmit="event.preventDefault(); submitSubmission();">
+        <div class="form-section">
+          <h3>著者情報 / Author Information</h3>
+          <div class="form-group">
+            <label>責任著者氏名 / Corresponding Author Name *</label>
+            <input type="text" id="authorName" value="${testData.authorName}" required>
+          </div>
+          <div class="form-group">
+            <label>責任著者メールアドレス / Author Email *</label>
+            <input type="email" id="authorEmail" value="${testData.authorEmail}" placeholder="あなたのメールアドレスを入力してください" required>
+            <p class="hint">このアドレスに受付通知とログインキーが送信されます。</p>
+          </div>
+          <div class="form-group">
+            <label>所属機関 / Affiliation</label>
+            <input type="text" id="authorAffiliation" value="${testData.authorAffiliation}">
+          </div>
+          <div class="form-group">
+            <label>住所 / Postal Address</label>
+            <input type="text" id="authorAddress" value="${testData.authorAddress}">
+          </div>
+          <div class="form-group">
+            <label>著者一覧 (日) / Authors (JP)</label>
+            <input type="text" id="authorsJp" value="${testData.authorsJp}" placeholder="著者1, 著者2...">
+          </div>
+          <div class="form-group">
+            <label>著者一覧 (英) / Authors (EN)</label>
+            <input type="text" id="authorsEn" value="${testData.authorsEn}" placeholder="Author 1, Author 2...">
+          </div>
+          <div class="form-group">
+            <label>共著者メールアドレス / CC Emails (Co-authors)</label>
+            <input type="text" id="ccEmails" value="${testData.ccEmails}" placeholder="email1@example.com, email2@example.com">
+            <p class="hint">カンマ区切りで入力してください。</p>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>原稿情報 / Manuscript Details</h3>
+          <div class="form-group">
+            <label>投稿種別 / Paper Type *</label>
+            <select id="paperType" required>
+              <option value="">-- 選択してください --</option>
+              ${typeOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>論文タイトル (日) / Title (JP) *</label>
+            <input type="text" id="titleJp" value="${testData.titleJp}" required>
+          </div>
+          <div class="form-group">
+            <label>論文タイトル (英) / Title (EN) *</label>
+            <input type="text" id="titleEn" value="${testData.titleEn}" required>
+          </div>
+          <div class="form-group">
+            <label>ランニングタイトル / Running Title</label>
+            <input type="text" id="runningTitle" value="${testData.runningTitle}">
+          </div>
+          <div class="form-group">
+            <label>要旨 (日) / Abstract (JP)</label>
+            <textarea id="abstractJp" rows="4">${testData.abstractJp}</textarea>
+          </div>
+          <div class="form-group">
+            <label>要旨 (英) / Abstract (EN)</label>
+            <textarea id="abstractEn" rows="4">${testData.abstractEn}</textarea>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>その他 / Additional Information</h3>
+          <div class="form-group">
+            <label>英文校閲 / English Editing</label>
+            <select id="englishEditing">
+              <option value="" ${testData.englishEditing === '' ? 'selected' : ''}>-- 選択してください --</option>
+              <option value="要" ${testData.englishEditing === '要' ? 'selected' : ''}>要 / Required</option>
+              <option value="不要" ${testData.englishEditing === '不要' ? 'selected' : ''}>不要 / Not required</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>別刷り部数 / Reprint Copies</label>
+            <input type="number" id="reprintRequest" value="${testData.reprintRequest}" min="0" placeholder="0">
+            <p class="hint">不要の場合は 0 を入力してください。</p>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>提出書類 / Files</h3>
+          <div class="form-group">
+            <label>投稿原稿 / Manuscript File *</label>
+            <input type="file" id="manuscriptFile" required>
+            <p class="hint">PDF, DOCX, etc.</p>
+          </div>
+          <div class="form-group">
+            <label>カバーレター / Letter to Editor</label>
+            <textarea id="letterToEditor" rows="3" placeholder="編集委員長へのメッセージがあれば入力してください">${testData.letterToEditor}</textarea>
+          </div>
+        </div>
+
+        <div style="margin-top:2rem;">
+          <button type="submit" id="submit-btn" style="background:var(--success);">投稿を送信 / Submit Manuscript</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+/**
+ * 新規投稿の送信処理
+ */
+async function submitSubmission() {
+  const btn = document.getElementById('submit-btn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '送信中... / Sending...';
+  btn.style.background = '#94a3b8';
+  btn.style.cursor = 'not-allowed';
+
+  try {
+    const fileInput = document.getElementById('manuscriptFile');
+    const files = [];
+    
+    if (fileInput.files.length > 0) {
+      for (let i = 0; i < fileInput.files.length; i++) {
+        const file = fileInput.files[i];
+        const b64 = await toBase64(file);
+        files.push({
+          name: file.name,
+          mimeType: file.type,
+          content: b64.split(',')[1]
+        });
+      }
+    }
+
+    const data = {
+      authorName: document.getElementById('authorName').value,
+      authorEmail: document.getElementById('authorEmail').value,
+      authorAffiliation: document.getElementById('authorAffiliation').value,
+      authorAddress: document.getElementById('authorAddress').value,
+      authorsJp: document.getElementById('authorsJp').value,
+      authorsEn: document.getElementById('authorsEn').value,
+      ccEmails: document.getElementById('ccEmails').value,
+      paperType: document.getElementById('paperType').value,
+      titleJp: document.getElementById('titleJp').value,
+      titleEn: document.getElementById('titleEn').value,
+      runningTitle: document.getElementById('runningTitle').value,
+      abstractJp: document.getElementById('abstractJp').value,
+      abstractEn: document.getElementById('abstractEn').value,
+      letterToEditor: document.getElementById('letterToEditor').value,
+      englishEditing: document.getElementById('englishEditing').value,
+      reprintRequest: document.getElementById('reprintRequest').value,
+      files: files
+    };
+
+    google.script.run
+      .withSuccessHandler(result => {
+        if (result.success) {
+          showSubmissionSuccess(result);
+        } else {
+          alert('エラーが発生しました: ' + (result.error || '不明なエラー'));
+          btn.disabled = false;
+          btn.textContent = originalText;
+          btn.style.background = '';
+          btn.style.cursor = '';
+        }
+      })
+      .withFailureHandler(err => {
+        alert('システムエラー: ' + err);
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.style.background = '';
+        btn.style.cursor = '';
+      })
+      .apiSubmitSubmission(data);
+
+  } catch (e) {
+    alert('エラー: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = originalText;
+    btn.style.background = '';
+    btn.style.cursor = '';
+  }
+}
+
+/**
+ * 投稿完了画面の表示
+ */
+function showSubmissionSuccess(result) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = `
+    <div class="success-message" style="text-align:center; padding: 3rem 1rem;">
+      <div style="font-size: 4rem; margin-bottom: 1rem;">🎉</div>
+      <h2 style="margin-bottom: 1rem;">投稿を受け付けました / Submission Received</h2>
+      <p>ご投稿ありがとうございました。受付通知メールをお送りしましたのでご確認ください。</p>
+      <div class="status-card" style="text-align:left; border-top: 5px solid var(--success); margin: 1.5rem 0;">
+        <p><strong>原稿ID / MS ID:</strong> ${result.msVer}</p>
+        <p style="margin-top:0.5rem; font-size:0.9rem; color:var(--secondary);">
+          進捗はメールに記載のリンクから確認できます。
+        </p>
+      </div>
+      <button onclick="window.close()" style="margin-top: 1.5rem; background:#64748b; color:white; border:none; padding:10px 20px; border-radius:6px; cursor:pointer;">ウィンドウを閉じる / Close Window</button>
+      <p style="margin-top: 1rem; font-size: 0.82rem; color: #94a3b8;">不具合で閉じない場合は、ブラウザの「×」で閉じてください。</p>
+    </div>
+  `;
+}
+
+</script>
