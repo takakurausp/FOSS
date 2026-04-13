@@ -319,6 +319,53 @@ function getScoreOptions() {
 }
 
 /**
+ * オープンコメント Google Doc のコピー先頭にヘッダーブロックを挿入する。
+ *
+ * 呼び出し元は必ず「原本のコピー」の Body を渡すこと。
+ * 原本そのものへの書き込みを避けることで、EIC が PDF 送信後も
+ * 元の Google Doc を再編集できる状態を保つ。
+ *
+ * 挿入順（上から）: 雑誌名 → 発行日時 → 水平線 → 判定
+ *
+ * @param {GoogleAppsScript.Document.Body} body      コピー先 Document の Body
+ * @param {string} journalName  雑誌名
+ * @param {string} score        EIC の判定スコア
+ * @param {string} dateStr      発行日時文字列
+ */
+function insertCommentDocHeader(body, journalName, score, dateStr) {
+  var styleTitle = {};
+  styleTitle[DocumentApp.Attribute.FONT_SIZE]        = 12;
+  styleTitle[DocumentApp.Attribute.BOLD]             = true;
+  styleTitle[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
+
+  var styleSmall = {};
+  styleSmall[DocumentApp.Attribute.FONT_SIZE]        = 10;
+  styleSmall[DocumentApp.Attribute.BOLD]             = false;
+  styleSmall[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
+  styleSmall[DocumentApp.Attribute.FOREGROUND_COLOR] = '#555555';
+
+  var styleLabel = {};
+  styleLabel[DocumentApp.Attribute.FONT_SIZE]        = 10.5;
+  styleLabel[DocumentApp.Attribute.BOLD]             = true;
+  styleLabel[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
+
+  // インデックス 0 に逆順で挿入することで、最終的に上から
+  // [雑誌名] → [日付] → [HR] → [判定] → [元のコンテンツ] の順になる
+  var decPara = body.insertParagraph(0, '判定 / Decision: ' + (score || ''));
+  decPara.setAttributes(styleLabel);
+
+  body.insertHorizontalRule(0);
+
+  var datePara = body.insertParagraph(0, dateStr || '');
+  datePara.setAttributes(styleSmall);
+  datePara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+
+  var titlePara = body.insertParagraph(0, journalName || '');
+  titlePara.setAttributes(styleTitle);
+  titlePara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+}
+
+/**
  * キャッシュ済み 2D 配列から _findDecisionsSheetRows 相当の処理を行うヘルパー
  */
 function _findDecisionsSheetRowsFromArray(data) {

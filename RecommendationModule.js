@@ -127,27 +127,8 @@ function createRecommendationReport(msData, data, ssId, settings) {
   styleLabel[DocumentApp.Attribute.BOLD]             = true;
   styleLabel[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
 
-  const styleSmall = {};
-  styleSmall[DocumentApp.Attribute.FONT_SIZE]        = 10;
-  styleSmall[DocumentApp.Attribute.BOLD]             = false;
-  styleSmall[DocumentApp.Attribute.FONT_FAMILY]      = 'Arial';
-  styleSmall[DocumentApp.Attribute.FOREGROUND_COLOR] = '#555555';
-
-  // ─── ジャーナル名（タイトル、最大12pt）
-  const titlePara = wordBody.appendParagraph(journalName);
-  titlePara.setAttributes(styleTitle);
-  titlePara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  titlePara.setSpacingAfter(2);
-
-  // ─── 発行日
-  const datePara = wordBody.appendParagraph(now);
-  datePara.setAttributes(styleSmall);
-  datePara.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-  datePara.setSpacingAfter(10);
-
-  wordBody.appendHorizontalRule();
-
   // ─── 原稿情報ブロック
+  // 注: 雑誌名・発行日時・判定は PDF 化時に先頭へ動的付加するため、ここには含めない
   wordBody.appendParagraph('');
   const msInfoStyle = Object.assign({}, styleBody);
 
@@ -172,9 +153,6 @@ function createRecommendationReport(msData, data, ssId, settings) {
 
   const msTypeLine = wordBody.appendParagraph('論文種別 / Manuscript Type: ' + (msData.MS_Type || ''));
   msTypeLine.setAttributes(styleBody);
-
-  const scoreLine = wordBody.appendParagraph('判定 / Decision: {{EIC_SCORE}}');
-  scoreLine.setAttributes(styleLabel);
 
   // ─── 冒頭文
   wordBody.appendParagraph('');

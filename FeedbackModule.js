@@ -28,19 +28,27 @@ function apiSubmitFeedback(data) {
   const authorExtraAttachments = [];
   if (data.commentDocId) {
     try {
-      // {{EIC_SCORE}} プレースホルダーを実際の判定スコアに置換してから PDF 化
-      try {
-        const commentDoc = DocumentApp.openById(data.commentDocId);
-        commentDoc.getBody().replaceText('\\{\\{EIC_SCORE\\}\\}', data.score || '');
-        commentDoc.saveAndClose();
-      } catch(eReplace) {
-        Logger.log('Score placeholder replacement failed: ' + eReplace.message);
-      }
-      const pdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
-      pdfBlob.setName('Open-Comments-' + msVer + '.pdf');
       const workingFolder = driveFolderCache.getOrCreateFolder(
         getManuscriptVerFolder(msData, settings), 'working'
       );
+      const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
+      const nowStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+
+      // 原本を変更せず、PDF 用コピーを作成してヘッダー（雑誌名・日時・判定）を先頭に追加
+      const pdfCopy = DriveApp.getFileById(data.commentDocId)
+        .makeCopy('_pdf-tmp-' + msVer, workingFolder);
+      try {
+        const copyDoc = DocumentApp.openById(pdfCopy.getId());
+        insertCommentDocHeader(copyDoc.getBody(), journalName, data.score || '', nowStr);
+        copyDoc.saveAndClose();
+      } catch(eHeader) {
+        Logger.log('Header insertion failed: ' + eHeader.message);
+      }
+
+      const pdfBlob = pdfCopy.getAs(MimeType.PDF);
+      pdfBlob.setName('Open-Comments-' + msVer + '.pdf');
+      pdfCopy.setTrashed(true); // 一時コピーを削除
+
       const savedPdf = workingFolder.createFile(pdfBlob);
       savedPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       if (data.commentEditorKey) {

@@ -104,22 +104,30 @@ function apiEicFinalAction(data) {
       'score':      data.decision || '',
       'accepted':   dtRouteA.isAccepted ? 'yes' : 'no'
     });
-    // コメントPDF添付（チェックボックスが有効かつ Google Doc ID が指定されている場合）
+    // コメントPDF添付（Google Doc ID が指定されている場合）
     if (data.commentDocId) {
       try {
-        // {{EIC_SCORE}} プレースホルダーを実際の判定スコアに置換してから PDF 化
-        try {
-          var commentDoc = DocumentApp.openById(data.commentDocId);
-          commentDoc.getBody().replaceText('\\{\\{EIC_SCORE\\}\\}', data.decision || '');
-          commentDoc.saveAndClose();
-        } catch(eReplace) {
-          Logger.log('Score placeholder replacement failed (route a): ' + eReplace.message);
-        }
-        var commentPdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
-        commentPdfBlob.setName('Open-Comments-' + (msData.MsVer || '') + '.pdf');
         var commentWorkingFolder = driveFolderCache.getOrCreateFolder(
           getManuscriptVerFolder(msData, settings), 'working'
         );
+        var journalNameA = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
+        var nowStrA = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+
+        // 原本を変更せず、PDF 用コピーを作成してヘッダー（雑誌名・日時・判定）を先頭に追加
+        var pdfCopyA = DriveApp.getFileById(data.commentDocId)
+          .makeCopy('_pdf-tmp-' + (msData.MsVer || ''), commentWorkingFolder);
+        try {
+          var copyDocA = DocumentApp.openById(pdfCopyA.getId());
+          insertCommentDocHeader(copyDocA.getBody(), journalNameA, data.decision || '', nowStrA);
+          copyDocA.saveAndClose();
+        } catch(eHeaderA) {
+          Logger.log('Header insertion failed (route a): ' + eHeaderA.message);
+        }
+
+        var commentPdfBlob = pdfCopyA.getAs(MimeType.PDF);
+        commentPdfBlob.setName('Open-Comments-' + (msData.MsVer || '') + '.pdf');
+        pdfCopyA.setTrashed(true); // 一時コピーを削除
+
         var savedCommentPdf = commentWorkingFolder.createFile(commentPdfBlob);
         savedCommentPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         if (data.commentEditorKey) {
