@@ -34,29 +34,29 @@ function apiSubmitFeedback(data) {
       const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
       const nowStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
 
-      // 原本を変更せず、PDF 用コピーを作成してヘッダー（雑誌名・日時・判定）を先頭に追加
-      const pdfCopy = DriveApp.getFileById(data.commentDocId)
-        .makeCopy('_pdf-tmp-' + msVer, workingFolder);
+      // ① 原本の先頭にヘッダーを挿入して保存（PDF化後はそのまま維持）
       try {
-        const copyDoc = DocumentApp.openById(pdfCopy.getId());
-        insertCommentDocHeader(copyDoc.getBody(), journalName, data.score || '', nowStr);
-        copyDoc.saveAndClose();
-      } catch(eHeader) {
-        Logger.log('Header insertion failed: ' + eHeader.message);
+        const commentDoc = DocumentApp.openById(data.commentDocId);
+        insertCommentDocHeader(commentDoc.getBody(), journalName, data.score || '', nowStr);
+        commentDoc.saveAndClose();
+      } catch(eInsert) {
+        Logger.log('Header insertion failed: ' + eInsert.message);
       }
 
-      const pdfBlob = pdfCopy.getAs(MimeType.PDF);
+      // ② 原本から PDF を取得（Drive API 経由）
+      const pdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
       pdfBlob.setName('Open-Comments-' + msVer + '.pdf');
-      pdfCopy.setTrashed(true); // 一時コピーを削除
 
+      // ③ PDF を Working フォルダに保存して共有リンクを発行
       const savedPdf = workingFolder.createFile(pdfBlob);
       savedPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       if (data.commentEditorKey) {
         updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
           { 'reportCommentPdfUrl': savedPdf.getUrl() });
       }
+      // ⑤ チェックボックスが有効なら取得済みの pdfBlob をそのまま添付（余分な API 呼び出しなし）
       if (data.attachCommentFile) {
-        authorExtraAttachments.push(savedPdf.getBlob().setName('Open-Comments-' + msVer + '.pdf'));
+        authorExtraAttachments.push(pdfBlob);
       }
     } catch(e) {
       Logger.log('Comment PDF export failed: ' + e.message);

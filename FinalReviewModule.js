@@ -112,30 +112,35 @@ function apiEicFinalAction(data) {
         );
         var journalNameA = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
         var nowStrA = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+        var msVerA = msData.MsVer || '';
 
-        // 原本を変更せず、PDF 用コピーを作成してヘッダー（雑誌名・日時・判定）を先頭に追加
-        var pdfCopyA = DriveApp.getFileById(data.commentDocId)
-          .makeCopy('_pdf-tmp-' + (msData.MsVer || ''), commentWorkingFolder);
+        // ① 原本の先頭にヘッダーを挿入して保存
+        var headerInsertedA = 0;
         try {
-          var copyDocA = DocumentApp.openById(pdfCopyA.getId());
-          insertCommentDocHeader(copyDocA.getBody(), journalNameA, data.decision || '', nowStrA);
-          copyDocA.saveAndClose();
-        } catch(eHeaderA) {
-          Logger.log('Header insertion failed (route a): ' + eHeaderA.message);
+          var commentDocA = DocumentApp.openById(data.commentDocId);
+          var bodyA = commentDocA.getBody();
+          var childsBeforeA = bodyA.getNumChildren();
+          insertCommentDocHeader(bodyA, journalNameA, data.decision || '', nowStrA);
+          headerInsertedA = bodyA.getNumChildren() - childsBeforeA;
+          commentDocA.saveAndClose();
+        } catch(eInsertA) {
+          Logger.log('Header insertion failed (route a): ' + eInsertA.message);
         }
 
-        var commentPdfBlob = pdfCopyA.getAs(MimeType.PDF);
-        commentPdfBlob.setName('Open-Comments-' + (msData.MsVer || '') + '.pdf');
-        pdfCopyA.setTrashed(true); // 一時コピーを削除
+        // ② 原本から PDF を取得
+        var commentPdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
+        commentPdfBlob.setName('Open-Comments-' + msVerA + '.pdf');
 
+        // ③ PDF を Working フォルダに保存
         var savedCommentPdf = commentWorkingFolder.createFile(commentPdfBlob);
         savedCommentPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
         if (data.commentEditorKey) {
           updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
             { 'reportCommentPdfUrl': savedCommentPdf.getUrl() });
         }
+        // ⑤ チェックボックスが有効なら取得済みの blob をそのまま添付
         if (data.attachCommentFile) {
-          eicAttachmentBlobs.push(savedCommentPdf.getBlob().setName('Open-Comments-' + (msData.MsVer || '') + '.pdf'));
+          eicAttachmentBlobs.push(commentPdfBlob);
         }
       } catch(e) {
         Logger.log('Comment PDF export failed (route a): ' + e.message);
