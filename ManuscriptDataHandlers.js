@@ -284,11 +284,12 @@ function getEicManuscriptData(ssId, key) {
     Score: String(log.Score || '').trim(),
     Message: String(log.Message || '').trim(),
     ConfidentialMessage: String(log.ConfidentialMessage || '').trim(),
-    reportPdfUrl:        String(log.reportPdfUrl        || '').trim(),
-    reportWordUrl:       String(log.reportWordUrl       || '').trim(),
-    reportFolderUrl:     String(log.reportFolderUrl     || '').trim(),
-    reportGoogleDocId:   String(log.reportGoogleDocId   || '').trim(),
-    reportCommentPdfUrl: String(log.reportCommentPdfUrl || '').trim()
+    reportPdfUrl:              String(log.reportPdfUrl              || '').trim(),
+    reportWordUrl:             String(log.reportWordUrl             || '').trim(),
+    reportFolderUrl:           String(log.reportFolderUrl           || '').trim(),
+    reportAttachmentsFolderUrl: String(log.reportAttachmentsFolderUrl || '').trim(),
+    reportGoogleDocId:         String(log.reportGoogleDocId         || '').trim(),
+    reportCommentPdfUrl:       String(log.reportCommentPdfUrl       || '').trim()
   }));
 
   // EIC用: 査読者一覧

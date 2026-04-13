@@ -30,10 +30,11 @@ function apiSubmitRecommendation(data) {
     'Received_At':         todayNow,
     'Message':             data.openComments         || '',
     'ConfidentialMessage': data.confidentialComments || '',
-    'reportPdfUrl':        reportFiles.pdf.getUrl(),
-    'reportWordUrl':       reportFiles.word.getUrl(),
-    'reportFolderUrl':     reportFiles.folderUrl     || '',
-    'reportGoogleDocId':   reportFiles.googleDocId   || ''
+    'reportPdfUrl':              reportFiles.pdf.getUrl(),
+    'reportWordUrl':             reportFiles.word.getUrl(),
+    'reportFolderUrl':           reportFiles.folderUrl           || '',
+    'reportAttachmentsFolderUrl': reportFiles.attachmentsFolderUrl || '',
+    'reportGoogleDocId':         reportFiles.googleDocId         || ''
   });
 
   // 4. 受理スコアかどうかで通知先を分岐
@@ -88,13 +89,19 @@ function createRecommendationReport(msData, data, ssId, settings) {
   const reviewLogLines = getFilteredReviewLog(ssId, msData.MsVer);
 
   // 2. 担当編集者がアップロードしたファイルを保存
+  //    添付ファイルは attachments/ サブフォルダに分離し、
+  //    コメント系ファイル（PDF/Word/Google Docs）が混在する workingFolder は直接見せない
   const uploadedFiles = [];
+  let attachmentsFolderUrl = '';
   if (data.files && data.files.length > 0) {
+    const attachFolder = driveFolderCache.getOrCreateFolder(workingFolder, 'attachments');
     data.files.forEach(file => {
       const blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
-      const savedFile = workingFolder.createFile(blob);
+      attachFolder.createFile(blob);
       uploadedFiles.push(file.name);
     });
+    attachFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    attachmentsFolderUrl = attachFolder.getUrl();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -333,17 +340,13 @@ function createRecommendationReport(msData, data, ssId, settings) {
   const pdfFile = workingFolder.createFile(pdfBlob).setName('Editor-Report-' + msData.MsVer + '.pdf');
   pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-  // 担当編集者がアップロードしたファイルがある場合、フォルダを共有リンクで閲覧可能にする
-  if (uploadedFiles.length > 0) {
-    workingFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  }
-
   return {
-    pdf:          pdfFile,
-    word:         wordFile,
-    uploadedFiles: uploadedFiles,
-    folderUrl:    workingFolder.getUrl(),
-    googleDocId:  wordDoc.getId()
+    pdf:                 pdfFile,
+    word:                wordFile,
+    uploadedFiles:       uploadedFiles,
+    folderUrl:           workingFolder.getUrl(),         // 内部用（コメント含む）
+    attachmentsFolderUrl: attachmentsFolderUrl,          // EIC・ME向け（添付のみ）
+    googleDocId:         wordDoc.getId()
   };
 }
 

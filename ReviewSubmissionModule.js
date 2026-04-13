@@ -26,26 +26,31 @@ function apiSubmitReview(data) {
   const verFolder = driveFolderCache.getOrCreateFolder(msFolder, 'ver.' + verNo);
 
   const reviewerName = msData.Rev_Name || 'Unknown_Reviewer';
+  // 査読者フォルダ（コメントGDocsはここに保存 / 外部には共有しない）
   const revFolder = driveFolderCache.getOrCreateFolder(verFolder, reviewerName);
 
-  // 3. Save attachments
+  // 3. Save attachments — 添付ファイルは attachments/ サブフォルダに分離
+  //    EIC・編集幹事には attachments/ フォルダのリンクのみ表示し、
+  //    コメントGDocsが混在する revFolder を直接見せないようにする
   let reviewFolderUrl = 'nofile';
   if (data.files && data.files.length > 0) {
+    const attachFolder = driveFolderCache.getOrCreateFolder(revFolder, 'attachments');
     data.files.forEach(file => {
       const blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
-      revFolder.createFile(blob);
+      attachFolder.createFile(blob);
     });
-    revFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    reviewFolderUrl = revFolder.getUrl();
+    attachFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    reviewFolderUrl = attachFolder.getUrl();
   }
 
-  // 4. Save comments to Google Docs
+  // 4. Save comments to Google Docs — コメントは revFolder（添付フォルダの親）に保存
+  //    共有リンクは渡さないため EIC・編集幹事からは見えない
   const openDoc = DocumentApp.create('Open-Comments-' + hexId);
   openDoc.getBody().appendParagraph(data.openComments || '');
   const confDoc = DocumentApp.create('Confidential-Comments-' + hexId);
   confDoc.getBody().appendParagraph(data.confidentialComments || '');
 
-  // Move docs to revFolder
+  // Move docs to revFolder (not the attachments subfolder)
   DriveApp.getFileById(openDoc.getId()).moveTo(revFolder);
   DriveApp.getFileById(confDoc.getId()).moveTo(revFolder);
 

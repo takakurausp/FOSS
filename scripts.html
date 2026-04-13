@@ -1228,7 +1228,7 @@ function buildMeEditorPanel(editorList) {
     const conf = e.ConfidentialMessage || '(なし / none)';
     // PDF・Word リンクはパネル外に表示するため、ここではフォルダリンクのみ
     const fileLinks = [
-      e.reportFolderUrl ? `<div><a href="${e.reportFolderUrl}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 担当編集者の添付ファイルフォルダ / Editor's Uploaded Files Folder</a></div>` : ''
+      (e.reportAttachmentsFolderUrl || e.reportFolderUrl) ? `<div><a href="${e.reportAttachmentsFolderUrl || e.reportFolderUrl}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 担当編集者の添付ファイルフォルダ / Editor's Uploaded Files Folder</a></div>` : ''
     ].filter(Boolean).join('');
 
     return `
