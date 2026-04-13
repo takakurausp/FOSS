@@ -878,9 +878,9 @@ function buildPastReviewersPanel(pastReviewersByRound) {
           <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#374151;">過去ラウンドの査読者 / Previous Round Reviewers</h4>
           <span style="background:#e5e7eb; color:#6b7280; font-size:0.7rem; font-weight:700; padding:1px 7px; border-radius:10px;">${totalRounds} round${totalRounds > 1 ? 's' : ''}</span>
         </div>
-        <span id="past-reviewers-icon" style="font-size:0.75rem; color:#9ca3af;">▶ 展開</span>
+        <span id="past-reviewers-icon" style="font-size:0.75rem; color:#9ca3af;">▼ 閉じる</span>
       </div>
-      <div id="past-reviewers-panel" style="display:none; padding:0.75rem 1rem; background:#f9fafb; border-top:1px solid #e5e7eb;">
+      <div id="past-reviewers-panel" style="display:block; padding:0.75rem 1rem; background:#f9fafb; border-top:1px solid #e5e7eb;">
         ${roundsHTML}
       </div>
     </div>`;
