@@ -26,7 +26,11 @@ function convertDatesToStrings(data) {
  * タイムゾーン対応の日付フォーマット関数を生成
  */
 function createDateFormatter(ssId) {
-  const timezone = SpreadsheetApp.openById(ssId).getSpreadsheetTimeZone();
+  // まず Settings キャッシュに乗せたタイムゾーンを使う（API 呼び出し不要）
+  const cachedSettings = getSettingsOptimized(ssId);
+  const timezone = (cachedSettings && cachedSettings._timezone)
+    ? cachedSettings._timezone
+    : SpreadsheetApp.openById(ssId).getSpreadsheetTimeZone();
   return function(val) {
     if (!val) return '';
     if (val instanceof Date) return Utilities.formatDate(val, timezone, 'yyyy/MM/dd HH:mm');
@@ -74,9 +78,12 @@ function enrichWithFolderInfo(msData, ssId) {
         if (verFolder) {
           const subFolder = driveFolderCache.getFolderByName(verFolder, 'submitted');
           if (subFolder) {
-            // 編集委員長・担当編集者・査読者が確実に「閲覧のみ」でアクセスできるよう共有設定を上書き
-            subFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
             msData.submittedFolderUrl = subFolder.getUrl();
+            // folderUrl が未設定（初回アクセス）の場合のみ共有設定を行う
+            // 既に設定済みなら setSharing() の Drive API 呼び出しを省略して高速化
+            if (!msData.folderUrl) {
+              subFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+            }
 
             // 互換性のため、従来通り folderUrl が空ならセットする
             if (!msData.folderUrl) {
@@ -345,54 +352,42 @@ function getEicManuscriptData(ssId, key) {
 
 /**
  * EIC全体管理: 全原稿の進捗サマリーを一括取得
- * Manuscripts・Editor_log・Review_log を各1回ずつ読み込んでメモリ上でジョイン
+ * spreadsheetCache 経由でシートを読み込み（prewarm 済みなら API 呼び出し不要）
  */
 function getEicAllMsData(ssId) {
   const fmt = createDateFormatter(ssId);
-  const ss  = SpreadsheetApp.openById(ssId);
 
-  // ── 全原稿行を取得
-  const msSheet = ss.getSheetByName(MANUSCRIPTS_SHEET_NAME);
-  if (!msSheet) return [];
-  const msRaw = msSheet.getDataRange().getValues();
-  if (msRaw.length < 2) return [];
-  const msHeaders = msRaw[0].map(function(h) { return String(h).trim(); });
+  // spreadsheetCache に展開（既に prewarm 済みならキャッシュヒット = API 呼び出しなし）
+  spreadsheetCache.prewarmSheets(ssId, [
+    MANUSCRIPTS_SHEET_NAME,
+    EDITOR_LOG_SHEET_NAME,
+    REVIEW_LOG_SHEET_NAME
+  ]);
 
-  // ── Editor_log を一括取得
-  var allEditorLogs = [];
-  var editorSheet = ss.getSheetByName(EDITOR_LOG_SHEET_NAME);
-  if (editorSheet) {
-    var edRaw = editorSheet.getDataRange().getValues();
-    if (edRaw.length >= 2) {
-      var edHeaders = edRaw[0].map(function(h) { return String(h).trim(); });
-      for (var ei = 1; ei < edRaw.length; ei++) {
-        var eObj = {};
-        edHeaders.forEach(function(h, i) { eObj[h] = edRaw[ei][i]; });
-        allEditorLogs.push(eObj);
-      }
-    }
+  // ── キャッシュから全原稿行を取得
+  const msCache = spreadsheetCache.getSheetData(ssId, MANUSCRIPTS_SHEET_NAME);
+  if (!msCache || msCache.rows.length === 0) return [];
+  const msHeaders = msCache.headers.map(function(h) { return String(h).trim(); });
+
+  // ── キャッシュから Editor_log・Review_log を取得してオブジェクト配列に変換
+  function cacheToObjArray(cacheEntry) {
+    if (!cacheEntry) return [];
+    var hdrs = cacheEntry.headers.map(function(h) { return String(h).trim(); });
+    return cacheEntry.rows.map(function(row) {
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = row[i]; });
+      return obj;
+    });
   }
 
-  // ── Review_log を一括取得
-  var allReviewLogs = [];
-  var reviewSheet = ss.getSheetByName(REVIEW_LOG_SHEET_NAME);
-  if (reviewSheet) {
-    var revRaw = reviewSheet.getDataRange().getValues();
-    if (revRaw.length >= 2) {
-      var revHeaders = revRaw[0].map(function(h) { return String(h).trim(); });
-      for (var ri = 1; ri < revRaw.length; ri++) {
-        var rObj = {};
-        revHeaders.forEach(function(h, i) { rObj[h] = revRaw[ri][i]; });
-        allReviewLogs.push(rObj);
-      }
-    }
-  }
+  var allEditorLogs = cacheToObjArray(spreadsheetCache.getSheetData(ssId, EDITOR_LOG_SHEET_NAME));
+  var allReviewLogs = cacheToObjArray(spreadsheetCache.getSheetData(ssId, REVIEW_LOG_SHEET_NAME));
 
   // ── 各原稿の進捗を集計
   var result = [];
-  for (var mi = 1; mi < msRaw.length; mi++) {
+  for (var mi = 0; mi < msCache.rows.length; mi++) {
     var ms = {};
-    msHeaders.forEach(function(h, i) { ms[h] = msRaw[mi][i]; });
+    msHeaders.forEach(function(h, i) { ms[h] = msCache.rows[mi][i]; });
 
     var msVer = String(ms.MsVer || '').trim();
     if (!msVer) continue;
@@ -626,7 +621,8 @@ function getManuscriptDataRefactored(role, key) {
       spreadsheetCache.prewarmSheets(ssId, [
         MANUSCRIPTS_SHEET_NAME,
         EDITOR_LOG_SHEET_NAME,
-        REVIEW_LOG_SHEET_NAME
+        REVIEW_LOG_SHEET_NAME,
+        DECISION_MAIL_SHEET_NAME
       ]);
       let msData = getManagingEditorManuscriptData(ssId, key);
       if (!msData) return null;

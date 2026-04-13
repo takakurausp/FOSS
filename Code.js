@@ -278,6 +278,25 @@ function diagnoseDecisionsSheet() {
 function getScoreOptions() {
   try {
     const ssId = getSpreadsheetId();
+
+    // spreadsheetCache に Decisions シートが展開済みなら API 呼び出し不要
+    const cachedData = spreadsheetCache.getSheetData(ssId, DECISION_MAIL_SHEET_NAME);
+    if (cachedData) {
+      const allRows  = [cachedData.headers, ...cachedData.rows];
+      const parsed   = _findDecisionsSheetRowsFromArray(allRows);
+      if (parsed) {
+        const { headerRowIdx, headers, data } = parsed;
+        const sIdx = headers.findIndex(h => String(h).toLowerCase().trim() === 'shortexplanation');
+        if (sIdx !== -1) {
+          const options = data.slice(headerRowIdx + 1)
+            .map(row => String(row[sIdx]).trim())
+            .filter(v => v !== '');
+          if (options.length > 0) return options;
+        }
+      }
+    }
+
+    // キャッシュになければ従来通りシートから直接取得
     const sheet = _getDecisionsSheet(ssId);
     if (!sheet) throw new Error('Decisions sheet not found');
     const parsed = _findDecisionsSheetRows(sheet);
@@ -297,6 +316,22 @@ function getScoreOptions() {
     Logger.log('getScoreOptions fallback: ' + e.message);
     return ['Accept', 'Minor Revision', 'Major Revision', 'Reject'];
   }
+}
+
+/**
+ * キャッシュ済み 2D 配列から _findDecisionsSheetRows 相当の処理を行うヘルパー
+ */
+function _findDecisionsSheetRowsFromArray(data) {
+  if (!data || data.length === 0) return null;
+  const headerRowIdx = data.findIndex(row =>
+    row.some(cell => String(cell).toLowerCase().trim() === 'shortexplanation')
+  );
+  if (headerRowIdx === -1) return null;
+  return {
+    headerRowIdx,
+    headers: data[headerRowIdx].map(h => String(h).trim()),
+    data
+  };
 }
 
 /**

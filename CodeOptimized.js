@@ -122,7 +122,8 @@ function getManuscriptDataBatch(requests) {
   spreadsheetCache.prewarmSheets(ssId, [
     MANUSCRIPTS_SHEET_NAME,
     EDITOR_LOG_SHEET_NAME,
-    REVIEW_LOG_SHEET_NAME
+    REVIEW_LOG_SHEET_NAME,
+    DECISION_MAIL_SHEET_NAME   // getScoreOptions / getDecisionMailOptions のキャッシュ利用に必要
   ]);
 
   // 各リクエストを処理（ロールハンドラーは warm キャッシュを参照するため API 呼び出しなし）

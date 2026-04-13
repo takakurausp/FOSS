@@ -136,13 +136,14 @@ class SettingsCache {
     }
     
     try {
-      const sheet = SpreadsheetApp.openById(ssId).getSheetByName('Settings');
+      const ss = SpreadsheetApp.openById(ssId);
+      const sheet = ss.getSheetByName('Settings');
       if (!sheet) {
         this.settingsCache = {};
         this.settingsTimestamp = now;
         return {};
       }
-      
+
       const data = sheet.getRange('A5:B100').getValues();
       const settings = {};
       data.forEach(row => {
@@ -150,10 +151,14 @@ class SettingsCache {
           settings[row[0]] = row[1];
         }
       });
-      
+
+      // タイムゾーンを同じ openById 呼び出しで取得してキャッシュに格納
+      // （createDateFormatter が別途 openById するのを防ぐ）
+      try { settings._timezone = ss.getSpreadsheetTimeZone(); } catch(e2) {}
+
       this.settingsCache = settings;
       this.settingsTimestamp = now;
-      
+
       return settings;
     } catch (e) {
       Logger.log(`Error loading settings: ${e}`);
