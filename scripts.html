@@ -447,7 +447,7 @@ function renderAuthorView(container) {
               <h3 style="margin-bottom:1rem;">査読結果 / Review Results</h3>
               ${buildEditorReviewResultsPanel(ms._reviewerList || [], true)}
               ${buildMeEditorPanel(ms._editorList || [])}
-              ${buildEditorReportLinksPanel(ms._editorList || [])}
+              ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt))}
             </div>
             ${ms._editorScore && !ms.sentBackAt ? `
             <div class="status-card" style="margin-top:2rem; background:#fffbeb; border:2px solid #fcd34d;">
@@ -494,7 +494,7 @@ function renderAuthorView(container) {
 
               <!-- 担当編集者レポート -->
               ${buildMeEditorPanel(ms._editorList || [])}
-              ${buildEditorReportLinksPanel(ms._editorList || [])}
+              ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.eicFinalDecision))}
 
               <!-- 編集幹事フィードバック -->
               <div style="margin-top:1.5rem; padding:1.25rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
@@ -1181,7 +1181,8 @@ function _buildCommentAttachBox(ms, isFinal) {
  * 担当編集者のレポートリンク（PDF・Word）をパネル外に表示するブロック
  * 査読過程全体に関わる資料として、担当編集者アコーディオンの外に独立して配置する。
  */
-function buildEditorReportLinksPanel(editorList) {
+function buildEditorReportLinksPanel(editorList, decisionSent) {
+  decisionSent = !!decisionSent;
   const reported = (editorList || []).filter(e => e.Score && (e.reportPdfUrl || e.reportWordUrl));
   if (reported.length === 0) return '';
 
@@ -1194,7 +1195,15 @@ function buildEditorReportLinksPanel(editorList) {
     var e = reported[i];
     if (e.reportPdfUrl)        items.push(linkDiv(e.reportPdfUrl, '#2563eb', '📄 レポート（PDF） / Report (PDF)'));
     if (e.reportWordUrl)       items.push(linkDiv(e.reportWordUrl, '#2563eb', '📝 オープンコメント集（Word） / Open Comments (Word)'));
-    if (e.reportGoogleDocId)   items.push(linkDiv('https://docs.google.com/document/d/' + e.reportGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
+    if (e.reportGoogleDocId && !decisionSent) {
+      items.push(linkDiv('https://docs.google.com/document/d/' + e.reportGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
+      items.push(
+        '<div style="margin-top:0.15rem; margin-bottom:0.6rem; padding:0.55rem 0.8rem; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:6px; font-size:0.825rem; line-height:1.65; color:#065f46;">' +
+        '編集後のコメント集は、PDFに変換して著者へのメールに添付することができます。添付を希望される場合は、編集後に下のチェックボックスにチェックを入れてから送信してください。<br>' +
+        '<span style="color:#047857;">Once you have finished editing, the compiled comments can be converted to PDF and attached to the email sent to the author. If you wish to include it, please check the box below before submitting.<\/span>' +
+        '<\/div>'
+      );
+    }
     if (e.reportCommentPdfUrl) items.push(linkDiv(e.reportCommentPdfUrl, '#7c3aed', '📨 送付済みコメントPDF / Sent Comments PDF'));
   }
 
@@ -1367,7 +1376,7 @@ function renderManagingEditorView(container) {
           </div>` : ''}
         ${buildEditorReviewResultsPanel(ms._reviewerList || [])}
         ${buildMeEditorPanel(ms._editorList || [])}
-        ${buildEditorReportLinksPanel(ms._editorList || [])}
+        ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt || ms.eicFinalDecision))}
         ${formOrConfirm}
         ${_buildFinalDecisionBanner(ms)}
       </div>`;
