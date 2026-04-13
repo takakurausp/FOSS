@@ -519,6 +519,7 @@ function renderAuthorView(container) {
                 ${ms.eicProductionComment ? '<div><p style="margin:0 0 0.25rem; font-size:0.75rem; font-weight:600; color:#059669;">印刷担当者へのコメント / Production Comment</p><div style="white-space:pre-wrap; background:#fff; padding:0.875rem; border-radius:6px; border:1px solid #d1fae5; font-size:0.875rem; line-height:1.7; color:#1e293b;">' + ms.eicProductionComment + '</div></div>' : ''}
                 ${ms.eicFinalFileUrl ? '<div style="margin-top:0.75rem;"><a href="' + ms.eicFinalFileUrl + '" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 添付ファイルを確認 / View Attachment</a></div>' : ''}
               </div>` : ''}
+              ${!ms.eicFinalDecision ? `
               <div style="padding:0.85rem 1rem; background:#fef9c3; border:1px solid #facc15; border-radius:8px; margin-bottom:1.25rem; font-size:0.875rem; line-height:1.75; color:#713f12;">
                 ⚠️ <strong>送信内容について / What will be sent:</strong><br>
                 <strong>【ルートa】投稿者に差し戻す場合：</strong>「著者へのコメント」と「添付ファイル」が<strong>著者</strong>に送信されます。「印刷担当者へのコメント」は使用されません。<br>
@@ -550,7 +551,7 @@ function renderAuthorView(container) {
               <div style="display:flex; flex-direction:column; gap:10px; margin-top:2rem;">
                 <button onclick="submitEicFinalAction('a')" id="eic-route-a-btn" disabled style="background:#94a3b8; color:#fff; padding:12px; border-radius:6px; font-weight:600; border:none; cursor:not-allowed;" title="判定種別を選択してください / Please select a decision type">[ルートa] 投稿者に差し戻す / Return to Author</button>
                 <button onclick="submitEicFinalAction('b')" id="eic-route-b-btn" disabled style="background:#94a3b8; color:#fff; padding:12px; border-radius:6px; font-weight:600; border:none; cursor:not-allowed;" title="受理かつ再投稿なしの判定を選んだ場合のみ押せます / Available only for Accept without resubmission">[ルートb] 印刷担当者に送る / Send to Production</button>
-              </div>
+              </div>` : ''}
             </div>
           `}
         ` : ''}
