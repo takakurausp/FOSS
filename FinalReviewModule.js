@@ -50,8 +50,29 @@ function apiSubmitManagingEditorReview(data) {
     'managingEditorSentAt':          now
   });
 
+  // 担当編集者レポートPDF（Editor-Report-*.pdf）を Drive から取得して添付
+  var reportPdfBlob = null;
+  var acceptedEdLog = (msData._editorList || []).find(function(e) {
+    return e.edtOk === 'ok' && e.reportPdfUrl;
+  });
+  if (!acceptedEdLog) {
+    // edtOk が取れない場合は reportPdfUrl を持つ最初のエントリを使用
+    acceptedEdLog = (msData._editorList || []).find(function(e) { return e.reportPdfUrl; });
+  }
+  if (acceptedEdLog && acceptedEdLog.reportPdfUrl) {
+    try {
+      var pdfMatch = acceptedEdLog.reportPdfUrl.match(/[-\w]{25,}/);
+      if (pdfMatch) {
+        reportPdfBlob = DriveApp.getFileById(pdfMatch[0]).getBlob()
+          .setName('Editor-Report-' + (msData.MsVer || '') + '.pdf');
+      }
+    } catch (pdfErr) {
+      Logger.log('Editor-Report PDF retrieval failed: ' + pdfErr.message);
+    }
+  }
+
   // 委員長へ通知
-  _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings);
+  _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportPdfBlob);
 
   writeLog('Managing Editor Review Submitted: ' + (msData.MsVer || ''));
   return { success: true };
@@ -213,7 +234,7 @@ function _resetEditorScoreForMsVer(ssId, msVer) {
 /**
  * 編集幹事 → 委員長 通知メール
  */
-function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings) {
+function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportPdfBlob) {
   if (!settings.chiefEditorEmail) {
     Logger.log('_sendManagingEditorReviewToEIC: chiefEditorEmail 未設定のためスキップ');
     return;
@@ -253,11 +274,14 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings) {
     footerHtml: settings.mailFooter || ''
   });
 
-  sendEmailSafe({
+  var emailOptions = {
     to: settings.chiefEditorEmail,
     subject: '[' + settings.Journal_Name + '] 編集幹事より最終確認済み / Managing Editor Review Ready: ' + (msData.MsVer || ''),
     htmlBody: html
-  }, 'Managing Editor Review to EIC: ' + (msData.MsVer || ''));
+  };
+  if (reportPdfBlob) emailOptions.attachments = [reportPdfBlob];
+
+  sendEmailSafe(emailOptions, 'Managing Editor Review to EIC: ' + (msData.MsVer || ''));
 }
 
 /**
