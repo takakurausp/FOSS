@@ -162,9 +162,9 @@ function logReviewerToDb(ssId, hexId, msVer, revKey, edName, edEmail, revName, r
   const sheet = SpreadsheetApp.openById(ssId).getSheetByName(REVIEW_LOG_SHEET_NAME);
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const newRow = new Array(headers.length).fill('');
-  
+
   const todayNow = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
-  
+
   const mapping = {
     'MsVerRevHex': hexId,
     'MsVer': msVer,
@@ -176,18 +176,31 @@ function logReviewerToDb(ssId, hexId, msVer, revKey, edName, edEmail, revName, r
     'Ask_At': todayNow,
     'Review_Deadline': reviewDeadline || ''
   };
-  
+
+  const writtenKeys = new Set();
   headers.forEach((h, i) => {
     const headerLower = String(h).toLowerCase();
     for (const k of Object.keys(mapping)) {
       if (k.toLowerCase() === headerLower) {
         newRow[i] = mapping[k];
+        writtenKeys.add(k.toLowerCase());
         break;
       }
     }
   });
-  
+
   sheet.appendRow(newRow);
+
+  // 対応する列が存在しなかったキーは、列ヘッダーを新規作成して値を書き込む
+  const newRowNum = sheet.getLastRow();
+  let nextCol = headers.length + 1;
+  for (const k of Object.keys(mapping)) {
+    if (!writtenKeys.has(k.toLowerCase()) && mapping[k] !== '') {
+      sheet.getRange(1, nextCol).setValue(k);
+      sheet.getRange(newRowNum, nextCol).setValue(mapping[k]);
+      nextCol++;
+    }
+  }
 }
 
 /**
