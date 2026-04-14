@@ -50,25 +50,12 @@ function apiSubmitManagingEditorReview(data) {
     'managingEditorSentAt':          now
   });
 
-  // 担当編集者レポートPDF（Editor-Report-*.pdf）を Drive から取得して添付
+  // 担当編集者レポート＋編集幹事コメントを合わせた最終確認レポートPDFを生成
   var reportPdfBlob = null;
-  var acceptedEdLog = (msData._editorList || []).find(function(e) {
-    return e.edtOk === 'ok' && e.reportPdfUrl;
-  });
-  if (!acceptedEdLog) {
-    // edtOk が取れない場合は reportPdfUrl を持つ最初のエントリを使用
-    acceptedEdLog = (msData._editorList || []).find(function(e) { return e.reportPdfUrl; });
-  }
-  if (acceptedEdLog && acceptedEdLog.reportPdfUrl) {
-    try {
-      var pdfMatch = acceptedEdLog.reportPdfUrl.match(/[-\w]{25,}/);
-      if (pdfMatch) {
-        reportPdfBlob = DriveApp.getFileById(pdfMatch[0]).getBlob()
-          .setName('Editor-Report-' + (msData.MsVer || '') + '.pdf');
-      }
-    } catch (pdfErr) {
-      Logger.log('Editor-Report PDF retrieval failed: ' + pdfErr.message);
-    }
+  try {
+    reportPdfBlob = createFinalReviewReport(msData, data, settings, ssId);
+  } catch (pdfErr) {
+    Logger.log('createFinalReviewReport failed: ' + pdfErr.message);
   }
 
   // 委員長へ通知
@@ -229,6 +216,138 @@ function _resetEditorScoreForMsVer(ssId, msVer) {
   }
   SpreadsheetApp.flush();
   spreadsheetCache.invalidate(ssId, EDITOR_LOG_SHEET_NAME);
+}
+
+/**
+ * 担当編集者レポート＋編集幹事コメントを合わせた最終確認レポートPDFを生成し、
+ * Drive の working フォルダに保存して blob を返す。
+ *
+ * @param {Object} msData  getManagingEditorManuscriptData() の戻り値
+ * @param {Object} data    apiSubmitManagingEditorReview() の data（authorComment, internalComment）
+ * @param {Object} settings
+ * @param {string} ssId
+ * @returns {Blob|null}  生成した PDF blob。失敗時は null。
+ */
+function createFinalReviewReport(msData, data, settings, ssId) {
+  const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : 'Journal';
+  const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const nl2br = s => esc(s).replace(/\n/g, '<br>');
+
+  const sectionTitle = title =>
+    `<div style="background:#1e40af; color:#fff; padding:6px 12px; margin:24px 0 10px; border-radius:4px; font-size:13px; font-weight:bold;">${esc(title)}</div>`;
+  const infoRow = (labelJp, labelEn, value) =>
+    `<tr>
+      <th style="text-align:left; padding:5px 10px; border:1px solid #d1d5db; background:#f3f4f6; width:32%; font-size:11px; vertical-align:top; white-space:nowrap;">
+        ${esc(labelJp)}<br><span style="font-size:9.5px; color:#6b7280;">${esc(labelEn)}</span>
+      </th>
+      <td style="padding:5px 10px; border:1px solid #d1d5db; font-size:11px; vertical-align:top; white-space:pre-wrap;">${esc(value)}</td>
+    </tr>`;
+  const infoRowHtml = (labelJp, labelEn, valueHtml) =>
+    `<tr>
+      <th style="text-align:left; padding:5px 10px; border:1px solid #d1d5db; background:#f3f4f6; width:32%; font-size:11px; vertical-align:top; white-space:nowrap;">
+        ${esc(labelJp)}<br><span style="font-size:9.5px; color:#6b7280;">${esc(labelEn)}</span>
+      </th>
+      <td style="padding:5px 10px; border:1px solid #d1d5db; font-size:11px; vertical-align:top;">${valueHtml}</td>
+    </tr>`;
+  const commentBox = (label, text, bgColor, borderColor) =>
+    `<div style="margin:6px 0; padding:8px 12px; background:${bgColor}; border:1px solid ${borderColor}; border-radius:6px;">
+      <p style="margin:0 0 4px; font-size:10px; font-weight:bold; color:#374151;">${esc(label)}</p>
+      <p style="margin:0; font-size:11px; white-space:pre-wrap;">${nl2br(text) || '<span style="color:#9ca3af;">(なし / None)</span>'}</p>
+    </div>`;
+
+  // 承諾済み担当編集者を取得
+  const editorList = msData._editorList || [];
+  const acceptedEd = editorList.find(e => e.edtOk === 'ok') || editorList[0] || {};
+
+  // 査読者コメント（Google Docs から本文を取得）
+  const reviewLogLines = getFilteredReviewLog(ssId, msData.MsVer || '');
+
+  let reviewerSections = '';
+  reviewLogLines.forEach(function(rev, idx) {
+    reviewerSections +=
+      `<div style="margin-bottom:16px; padding:10px 14px; border:1px solid #e2e8f0; border-radius:8px; break-inside:avoid;">
+        <p style="margin:0 0 6px; font-size:13px; font-weight:bold;">Reviewer #${idx + 1}: ${esc(rev.Rev_Name)}</p>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:8px;">
+          ${infoRow('判定スコア', 'Score', rev.Score || '')}
+          ${infoRow('査読結果提出日', 'Submitted', String(rev.Received_At || ''))}
+        </table>
+        ${commentBox('オープンコメント / Open Comments', rev.openCommentsText || '', '#f8fafc', '#e2e8f0')}
+        ${commentBox('🔒 コンフィデンシャルコメント / Confidential Comments (not shared with authors)', rev.confidentialCommentsText || '', '#fffbeb', '#fcd34d')}
+        ${rev.folderUrl && rev.folderUrl !== 'nofile'
+          ? `<p style="margin:6px 0 0; font-size:10px;"><a href="${esc(rev.folderUrl)}">📁 添付ファイルフォルダ / Attached Files Folder</a></p>` : ''}
+      </div>`;
+  });
+
+  const pdfHtml = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Hiragino Kaku Gothic Pro','Meiryo','Arial',sans-serif; font-size:11px; color:#111827; margin:0; padding:28px 36px; line-height:1.55; }
+  h1  { font-size:18px; margin:0; color:#fff; }
+  h2  { font-size:14px; margin:10px 0 4px; color:#1e40af; }
+  table { width:100%; border-collapse:collapse; margin-bottom:10px; }
+  .meta { font-size:10px; color:#6b7280; margin-bottom:16px; }
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body>
+  <div style="background:#1e40af; padding:18px 20px; margin:-28px -36px 24px; border-bottom:4px solid #1d4ed8;">
+    <h1>${esc(journalName)}</h1>
+    <p style="color:#bfdbfe; margin:4px 0 0; font-size:12px;">Final Review Report / 最終確認レポート</p>
+  </div>
+
+  <p class="meta">原稿番号 / Manuscript No.: <strong>${esc(msData.MsVer || '')}</strong> &nbsp;|&nbsp; 発行日時 / Issued: <strong>${now}</strong></p>
+
+  ${sectionTitle('原稿情報 / Manuscript Information')}
+  <table>
+    ${infoRow('原稿番号', 'Manuscript ID', msData.MsVer || '')}
+    ${infoRow('原稿種別', 'Type', msData.MS_Type || '')}
+    ${infoRow('タイトル（日）', 'Title (JP)', msData.TitleJP || '')}
+    ${infoRow('タイトル（英）', 'Title (EN)', msData.TitleEN || '')}
+    ${infoRow('著者（日）', 'Authors (JP)', msData.AuthorsJP || '')}
+    ${infoRow('著者（英）', 'Authors (EN)', msData.AuthorsEN || '')}
+    ${infoRow('責任著者', 'Corresponding Author', (msData.CA_Name || '') + (msData.CA_Email ? ' (' + msData.CA_Email + ')' : ''))}
+    ${infoRow('投稿日時', 'Submitted at', msData.Submitted_At || '')}
+  </table>
+
+  ${sectionTitle('担当編集者の推薦 / Responsible Editor\'s Recommendation')}
+  <table>
+    ${infoRow('担当編集者', 'Responsible Editor', (acceptedEd.Editor_Name || '') + (acceptedEd.Editor_Email ? ' (' + acceptedEd.Editor_Email + ')' : ''))}
+    ${infoRowHtml('推薦スコア', 'Recommended Score', `<strong style="color:#1e40af; font-size:14px;">${esc(acceptedEd.Score || '')}</strong>`)}
+    ${infoRow('推薦提出日時', 'Submitted at', acceptedEd.Answer_At || '')}
+  </table>
+  ${commentBox('オープンコメント / Open Comments (for authors)', acceptedEd.Message || '', '#f8fafc', '#e2e8f0')}
+  ${commentBox('🔒 コンフィデンシャルコメント / Confidential Comments (for EIC only)', acceptedEd.ConfidentialMessage || '', '#fffbeb', '#fcd34d')}
+
+  ${reviewLogLines.length > 0 ? sectionTitle('査読結果 / Peer Review Results (' + reviewLogLines.length + ' reviewers)') : ''}
+  ${reviewerSections}
+
+  ${sectionTitle('編集幹事の確認 / Managing Editor\'s Review')}
+  <table>
+    ${infoRow('編集幹事確認日時', 'Reviewed at', now)}
+  </table>
+  ${commentBox('著者宛コメント / Comment for Author', data.authorComment || '', '#f0fdf4', '#86efac')}
+  ${commentBox('🔒 内部用コメント / Internal Comment (for EIC / production staff)', data.internalComment || '', '#fffbeb', '#fcd34d')}
+</body>
+</html>`;
+
+  const pdfBlob = HtmlService.createHtmlOutput(pdfHtml).getBlob().getAs(MimeType.PDF);
+
+  // Drive の working フォルダに保存
+  try {
+    const verFolder = getManuscriptVerFolder(msData, settings);
+    const workingFolder = driveFolderCache.getOrCreateFolder(verFolder, 'working');
+    const pdfFile = workingFolder.createFile(pdfBlob).setName('Final-Report-' + (msData.MsVer || '') + '.pdf');
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return pdfFile.getBlob().setName('Final-Report-' + (msData.MsVer || '') + '.pdf');
+  } catch (saveErr) {
+    Logger.log('createFinalReviewReport: Drive save failed: ' + saveErr.message + ' — using in-memory blob');
+    pdfBlob.setName('Final-Report-' + (msData.MsVer || '') + '.pdf');
+    return pdfBlob;
+  }
 }
 
 /**
