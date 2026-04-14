@@ -409,7 +409,7 @@ function getManuscriptTypes() {
 function readDocText(docId) {
   if (!docId || docId === 'nofile' || docId === '') return '';
   try {
-    return DocumentApp.openById(docId).getBody().getText();
+    return DocumentApp.openById(docId).getBody().getText().trim();
   } catch(e) {
     Logger.log('readDocText error (' + docId + '): ' + e);
     return '';

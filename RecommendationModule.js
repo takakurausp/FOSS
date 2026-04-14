@@ -351,14 +351,14 @@ function getFilteredReviewLog(ssId, msVer) {
 
       if (data[i][openDocIdIdx]) {
         try {
-          revData.openCommentsText = DocumentApp.openById(data[i][openDocIdIdx]).getBody().getText();
+          revData.openCommentsText = DocumentApp.openById(data[i][openDocIdIdx]).getBody().getText().trim();
         } catch(e) {
           revData.openCommentsText = '(Error reading comments)';
         }
       }
       if (confDocIdIdx !== -1 && data[i][confDocIdIdx]) {
         try {
-          revData.confidentialCommentsText = DocumentApp.openById(data[i][confDocIdIdx]).getBody().getText();
+          revData.confidentialCommentsText = DocumentApp.openById(data[i][confDocIdIdx]).getBody().getText().trim();
         } catch(e) {
           revData.confidentialCommentsText = '';
         }
