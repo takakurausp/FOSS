@@ -803,9 +803,9 @@ function _notifyManagingEditorOfEicRoute(msData, route, eicAuthorComment, eicPro
 
 /**
  * 委員長による投稿直後の審査停止 API
- * システムからは著者への連絡をしない（委員長が直接メールを書く）
+ * 著者への通知メールをシステムから送信する
  * 停止後は apiArchiveManuscript で手動削除できる
- * data: { eicKey }
+ * data: { eicKey, message }
  */
 function apiStopManuscriptByEic(data) {
   var ssId = getSpreadsheetId();
@@ -816,6 +816,27 @@ function apiStopManuscriptByEic(data) {
   updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
     'stoppedByEicAt': now
   });
+
+  // 著者への通知メール送信
+  if (data.message) {
+    var settings = getSettings();
+    var journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : 'Journal';
+    var msVer = msData.MsVer || '';
+    var bodyHtml = String(data.message)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+    var html = renderRichEmail({
+      journalName: journalName,
+      greeting:    '',
+      bodyHtml:    bodyHtml,
+      footerHtml:  settings.mailFooter || ''
+    });
+    sendEmailSafe({
+      to:       msData.CA_Email,
+      subject:  '[' + journalName + '] 原稿の掲載見合わせについて / Manuscript Not Accepted: ' + msVer,
+      htmlBody: html
+    }, 'EIC Early Rejection Notification: ' + msVer);
+  }
 
   writeLog('EIC Stopped Manuscript (Early Rejection): ' + (msData.MsVer || ''));
   return { success: true };

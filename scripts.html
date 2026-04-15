@@ -480,10 +480,20 @@ function renderAuthorView(container) {
               </div>
             </div>` : ''}
             ${ms._progressStatus === 'submitted' ? `
-            <div class="status-card" style="margin-top:2rem; border:1px solid #fca5a5; background:#fff7f7;">
+            <div id="stop-review-container" class="status-card" style="margin-top:2rem; border:1px solid #fca5a5; background:#fff7f7;" data-author-name="${(ms.CA_Name || '').replace(/"/g, '&quot;')}">
               <h3 style="margin-bottom:0.5rem; color:#b91c1c;">審査停止（投稿直後却下）/ Stop Review</h3>
-              <p style="font-size:0.9rem; color:#6b7280; margin:0 0 1rem;">担当編集者の割当を行わず審査を停止します。著者への連絡は委員長が直接メールで行ってください。</p>
-              <button onclick="handleStopByEicClick()" style="background:#dc2626; color:#fff; padding:10px 20px; border-radius:6px; font-weight:600; border:none; cursor:pointer;">審査を停止する / Stop Review</button>
+              <p style="font-size:0.9rem; color:#6b7280; margin:0 0 1rem;">担当編集者の割当を行わず審査を停止します。著者への通知メールを入力して送信してください。</p>
+              <div id="stop-review-btn-area">
+                <button onclick="handleStopByEicClick()" style="background:#dc2626; color:#fff; padding:10px 20px; border-radius:6px; font-weight:600; border:none; cursor:pointer;">審査を停止する / Stop Review</button>
+              </div>
+              <div id="stop-review-form-area" style="display:none; margin-top:1rem;">
+                <p style="font-size:0.85rem; font-weight:600; color:#b91c1c; margin:0 0 0.5rem;">著者への通知メール本文 / Notification Email to Author</p>
+                <textarea id="stop-review-message" rows="10" style="width:100%; padding:0.75rem; border:1px solid #fca5a5; border-radius:6px; font-size:0.875rem; font-family:inherit; resize:vertical; box-sizing:border-box;"></textarea>
+                <div style="margin-top:0.75rem; display:flex; gap:0.5rem; justify-content:flex-end;">
+                  <button onclick="handleStopByEicCancel()" style="background:#f3f4f6; color:#374151; padding:8px 16px; border-radius:6px; font-weight:600; border:1px solid #d1d5db; cursor:pointer;">キャンセル / Cancel</button>
+                  <button onclick="handleStopByEicConfirm()" style="background:#dc2626; color:#fff; padding:8px 16px; border-radius:6px; font-weight:600; border:none; cursor:pointer;">停止して著者に送信 / Stop &amp; Notify Author</button>
+                </div>
+              </div>
             </div>` : ''}
           ` : `
             <div class="status-card" style="margin-top:2rem; border-left: 10px solid #2563eb;">
@@ -1957,11 +1967,33 @@ function handleArchiveClick(msId, key) {
 }
 
 function handleStopByEicClick() {
-  if(!confirm('この原稿の審査を停止しますか？\n著者への連絡は委員長が直接メールで行ってください。')) return;
+  var authorName = document.getElementById('stop-review-container').getAttribute('data-author-name') || '著者';
+  var defaultMsg = authorName + ' 先生 / Dear ' + authorName + ',\n\n'
+    + 'このたびは本誌にご投稿いただきありがとうございます。\n'
+    + 'Thank you for submitting your manuscript to our journal.\n\n'
+    + 'ご投稿論文を慎重に検討いたしました結果、今回のご投稿内容は本誌の対象範囲を超えると判断いたしましたため、掲載を見合わせることとなりました。\n'
+    + 'After careful consideration, we have determined that your manuscript falls outside the scope of our journal, and we are therefore unable to proceed with publication.\n\n'
+    + 'ご期待に沿えず誠に申し訳ございませんが、他の適切な掲載媒体でのご採択をお祈り申し上げます。\n'
+    + 'We apologize for not being able to meet your expectations and wish you success in finding a more suitable venue.\n\n'
+    + '編集委員長 / Editor-in-Chief';
+  document.getElementById('stop-review-message').value = defaultMsg;
+  document.getElementById('stop-review-btn-area').style.display = 'none';
+  document.getElementById('stop-review-form-area').style.display = 'block';
+}
+
+function handleStopByEicCancel() {
+  document.getElementById('stop-review-btn-area').style.display = 'block';
+  document.getElementById('stop-review-form-area').style.display = 'none';
+}
+
+function handleStopByEicConfirm() {
+  var message = document.getElementById('stop-review-message').value.trim();
+  if (!message) { alert('メッセージを入力してください。'); return; }
+  if (!confirm('この原稿の審査を停止し、著者に通知メールを送信しますか？\nAre you sure you want to stop review and notify the author?')) return;
   google.script.run
     .withSuccessHandler(() => renderAuthorView(document.getElementById('main-content')))
     .withFailureHandler(err => alert('エラー: ' + err.message))
-    .apiStopManuscriptByEic({ eicKey: USER_KEY });
+    .apiStopManuscriptByEic({ eicKey: USER_KEY, message: message });
 }
 
 /**
