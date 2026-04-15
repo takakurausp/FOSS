@@ -409,4 +409,27 @@ button:hover:not(:disabled) {
 .btn-secondary {
   background-color: var(--secondary) !important;
 }
+
+/* ── ドラッグ&ドロップ ファイルゾーン ── */
+.file-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem 0.75rem;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.file-drop-zone:hover {
+  border-color: var(--primary);
+}
+.file-drop-zone.drag-over {
+  border-color: var(--primary);
+  background-color: #eff6ff;
+}
+.file-drop-hint {
+  display: block;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-bottom: 0.2rem;
+  pointer-events: none;
+  user-select: none;
+}
 </style>

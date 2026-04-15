@@ -165,8 +165,12 @@ function getProgressSummary(ssId) {
   const msHeaders = msData[0];
   const acceptedIdx = msHeaders.indexOf('accepted');
   const scoreIdx = msHeaders.indexOf('score');
-  
-  const pendingMss = msData.slice(1).filter(row => row[acceptedIdx] === '' || row[acceptedIdx] === null);
+  const stoppedIdx = msHeaders.indexOf('stoppedByEicAt');
+
+  const pendingMss = msData.slice(1).filter(row =>
+    (row[acceptedIdx] === '' || row[acceptedIdx] === null) &&
+    !(stoppedIdx !== -1 && String(row[stoppedIdx] || '').trim())
+  );
 
   return {
     totalPending: pendingMss.length,

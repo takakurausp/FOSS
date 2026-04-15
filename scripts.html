@@ -462,7 +462,10 @@ function renderAuthorView(container) {
                 <div class="form-group"><label>著者へのコメント / Comments for Author</label><textarea id="feedbackComments" rows="4" placeholder="著者に開示されるコメント / These comments will be shared with the author"></textarea></div>
                 <div class="form-group">
                   <label>📎 添付ファイル / Attachments <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span></label>
-                  <input type="file" id="eicFeedbackFiles" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+                  <div class="file-drop-zone">
+                    <span class="file-drop-hint">ここにドロップ / Drop files here</span>
+                    <input type="file" id="eicFeedbackFiles" multiple style="display:block; margin-top:0.25rem; font-size:0.9rem;">
+                  </div>
                 </div>
                 ${_buildCommentAttachBox(ms, false)}
                 <button type="submit" id="feedback-btn" style="background:#d97706; color:#fff; padding:12px 28px; border:none; border-radius:6px; font-weight:600; font-size:1rem; cursor:pointer;">判定通知を送信 / Send Decision</button>
@@ -555,7 +558,10 @@ function renderAuthorView(container) {
               </div>
               <div class="form-group">
                 <label>📎 添付ファイル / Attachments <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span></label>
-                <input type="file" id="eicFinalFiles" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+                <div class="file-drop-zone">
+                  <span class="file-drop-hint">ここにドロップ / Drop files here</span>
+                  <input type="file" id="eicFinalFiles" multiple style="display:block; margin-top:0.25rem; font-size:0.9rem;">
+                </div>
               </div>
               ${_buildCommentAttachBox(ms, true)}
               <div style="display:flex; flex-direction:column; gap:10px; margin-top:2rem;">
@@ -690,7 +696,10 @@ function buildEditorRecommendationForm(ms) {
           <label>📎 添付ファイル / Attachments
             <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span>
           </label>
-          <input type="file" id="er-files" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+          <div class="file-drop-zone">
+            <span class="file-drop-hint">ここにドロップ / Drop files here</span>
+            <input type="file" id="er-files" multiple style="display:block; margin-top:0.25rem; font-size:0.9rem;">
+          </div>
         </div>
         <button type="submit" id="er-btn" style="background:#15803d; color:#fff; padding:12px 28px; border:none; border-radius:6px; font-weight:600; font-size:1rem; cursor:pointer;">
           推薦を送信 / Submit Recommendation
@@ -1107,7 +1116,10 @@ function renderReviewerView(container) {
           <div class="form-group"><label>🔒 コンフィデンシャルコメント / Confidential Comments <span style="font-size:0.8em; color:#64748b;">（編集者・委員長のみ閲覧 / Visible to editor and EIC only）</span></label><textarea id="rcc" rows="4" placeholder="任意 / Optional"></textarea></div>
           <div class="form-group">
             <label>📎 添付ファイル / Attachments <span style="font-size:0.8em; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span></label>
-            <input type="file" id="rfiles" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+            <div class="file-drop-zone">
+              <span class="file-drop-hint">ここにドロップ / Drop files here</span>
+              <input type="file" id="rfiles" multiple style="display:block; margin-top:0.25rem; font-size:0.9rem;">
+            </div>
             <p style="font-size:0.8em; color:#64748b; margin-top:0.25rem;">審査票・コメントファイル等をアップロードできます。/ You can upload review sheets, annotated files, etc.</p>
           </div>
           <button type="submit">査読結果を送信 / Submit Review</button>
@@ -1366,7 +1378,10 @@ function renderManagingEditorView(container) {
             <label>📎 添付ファイル / Attachments
               <span style="font-size:0.8em; font-weight:400; color:#64748b;">（任意・複数可 / Optional, multiple files allowed）</span>
             </label>
-            <input type="file" id="mf" multiple style="display:block; margin-top:0.5rem; font-size:0.9rem;">
+            <div class="file-drop-zone">
+              <span class="file-drop-hint">ここにドロップ / Drop files here</span>
+              <input type="file" id="mf" multiple style="display:block; margin-top:0.25rem; font-size:0.9rem;">
+            </div>
           </div>
           <button type="submit" id="msb" style="background:#1d4ed8; color:#fff; padding:12px 28px; border:none; border-radius:6px; font-weight:600; font-size:1rem; cursor:pointer;">
             委員長へ送信 / Send to EIC
@@ -1716,7 +1731,10 @@ function _renderResubmissionFormInner(container, ms, manuscriptTypes) {
           </div>
           <div class="form-group">
             <label>修正原稿・回答ファイル / Revised Manuscript &amp; Response Files *</label>
-            <input type="file" id="rsb-files" multiple required>
+            <div class="file-drop-zone">
+              <span class="file-drop-hint">ここにドロップ / Drop files here</span>
+              <input type="file" id="rsb-files" multiple required style="display:block; margin-top:0.25rem; font-size:0.9rem;">
+            </div>
             <p class="hint">複数ファイルを選択できます。PDF, DOCX など / Multiple files can be selected. PDF, DOCX, etc.</p>
           </div>
         </div>
@@ -2125,7 +2143,10 @@ function renderNewAuthorForm(container) {
           <h3>提出書類 / Files</h3>
           <div class="form-group">
             <label>投稿原稿 / Manuscript File *</label>
-            <input type="file" id="manuscriptFile" required>
+            <div class="file-drop-zone">
+              <span class="file-drop-hint">ここにドロップ / Drop files here</span>
+              <input type="file" id="manuscriptFile" required style="display:block; margin-top:0.25rem; font-size:0.9rem;">
+            </div>
             <p class="hint">PDF, DOCX, etc.</p>
           </div>
           <div class="form-group">
@@ -2297,6 +2318,31 @@ function renderEicOverview(container) {
 /**
  * 投稿完了画面の表示
  */
+// ── ドラッグ&ドロップ ファイルアップロード（全フォーム共通） ──
+(function () {
+  function getZone(el) { return el && el.closest ? el.closest('.file-drop-zone') : null; }
+  document.addEventListener('dragover', function (e) {
+    var z = getZone(e.target);
+    if (z) { e.preventDefault(); z.classList.add('drag-over'); }
+  });
+  document.addEventListener('dragleave', function (e) {
+    var z = getZone(e.target);
+    if (z && !z.contains(e.relatedTarget)) z.classList.remove('drag-over');
+  });
+  document.addEventListener('drop', function (e) {
+    var z = getZone(e.target);
+    if (!z) return;
+    e.preventDefault();
+    z.classList.remove('drag-over');
+    var input = z.querySelector('input[type="file"]');
+    if (!input || !e.dataTransfer.files.length) return;
+    var dt = new DataTransfer();
+    Array.from(e.dataTransfer.files).forEach(function (f) { dt.items.add(f); });
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+  });
+})();
+
 function showSubmissionSuccess(result) {
   const main = document.getElementById('main-content');
   main.innerHTML = `
