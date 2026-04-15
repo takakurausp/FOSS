@@ -25,7 +25,7 @@ function apiSubmitFeedback(data) {
   }
 
   // 2. コメントPDFの生成・Drive保存（DB更新・メール送信より先に完了させる）
-  const authorExtraAttachments = [];
+  let commentPdfUrl = '';
   if (data.commentDocId) {
     try {
       const workingFolder = driveFolderCache.getOrCreateFolder(
@@ -50,13 +50,10 @@ function apiSubmitFeedback(data) {
       // ③ PDF を Working フォルダに保存して共有リンクを発行
       const savedPdf = workingFolder.createFile(pdfBlob);
       savedPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      commentPdfUrl = savedPdf.getUrl();
       if (data.commentEditorKey) {
         updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
-          { 'reportCommentPdfUrl': savedPdf.getUrl() });
-      }
-      // ⑤ チェックボックスが有効なら取得済みの pdfBlob をそのまま添付（余分な API 呼び出しなし）
-      if (data.attachCommentFile) {
-        authorExtraAttachments.push(pdfBlob);
+          { 'reportCommentPdfUrl': commentPdfUrl });
       }
     } catch(e) {
       Logger.log('Comment PDF export failed: ' + e.message);
@@ -97,7 +94,7 @@ function apiSubmitFeedback(data) {
   msData.score = data.score;
   
   // 5. 著者への通知メール送信
-  sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates, authorExtraAttachments);
+  sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates, commentPdfUrl);
   
   // 6. 委員長（および担当編集者）への確認通知
   sendFeedbackConfirmationToRequester(msData, settings);
@@ -136,7 +133,7 @@ function updateManuscriptCell(ssId, msKey, updates) {
 /**
  * 著者への判定通知
  */
-function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates, extraAttachments) {
+function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates, commentPdfUrl) {
   if (!decisionTemplates) decisionTemplates = getDecisionTemplates(ssId, data.score);
   const resubmissionUrl = ScriptApp.getService().getUrl() + '?key=' + msData.key; // 著者がアクセスすると状態により再投稿画面が出る想定
 
@@ -186,6 +183,19 @@ function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, dec
     `;
   }
 
+  // オープンコメントPDF Driveリンクのセクション
+  if (commentPdfUrl) {
+    mainText += `
+      <div style="margin-top: 16px; padding: 20px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; text-align: center;">
+        <p style="margin: 0 0 12px 0; font-weight: bold; color: #15803d; font-size: 15px;">📄 オープンコメント / Open Comments</p>
+        <p style="margin: 0 0 15px 0; font-size: 13.5px; color: #14532d; line-height: 1.5;">査読者・編集者のオープンコメントをご確認ください。<br>Please review the open comments from reviewers and editors.</p>
+        <a href="${commentPdfUrl}" style="display: inline-block; padding: 10px 24px; background-color: #059669; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14.5px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2);">
+          コメントPDFを開く / Open Comments PDF
+        </a>
+      </div>
+    `;
+  }
+
   const bodyHtml = `
     <p>A decision has been reached regarding your manuscript <strong>${msData.MsVer}</strong>, entitled "${msData.TitleEN}".</p>
     <div style="background:#f1f5f9; padding:20px; border-radius:8px; margin:20px 0; font-size: 15px; line-height: 1.6;">
@@ -218,7 +228,6 @@ function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, dec
     htmlBody: html
   };
   if (editorBcc && editorBcc.email) feedbackMailOptions.bcc = editorBcc.email;
-  if (extraAttachments && extraAttachments.length > 0) feedbackMailOptions.attachments = extraAttachments;
 
   sendEmailSafe(feedbackMailOptions, 'Decision Feedback to Author: ' + msData.MsVer);
 }

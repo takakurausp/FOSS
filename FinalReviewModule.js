@@ -76,17 +76,14 @@ function apiEicFinalAction(data) {
   const msData = getManuscriptData('eic', data.eicKey);
   if (!msData) throw new Error('原稿が見つかりません。/ Manuscript not found.');
 
-  // 委員長添付ファイルを Drive に保存（メール添付用 blob も別途保持）
+  // 委員長添付ファイルを Drive に保存
   let eicFileUrl = '';
-  var eicAttachmentBlobs = [];
   if (data.files && data.files.length > 0) {
     const verFolder = getManuscriptVerFolder(msData, settings);
     const eicFolder = driveFolderCache.getOrCreateFolder(verFolder, 'eic-final');
     data.files.forEach(function(file) {
       const decoded = Utilities.base64Decode(file.content);
       eicFolder.createFile(Utilities.newBlob(decoded, file.mimeType, file.name));
-      // メール添付用に別 blob を保持
-      eicAttachmentBlobs.push(Utilities.newBlob(decoded, file.mimeType, file.name));
     });
     eicFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     eicFileUrl = eicFolder.getUrl();
@@ -112,7 +109,8 @@ function apiEicFinalAction(data) {
       'score':      data.decision || '',
       'accepted':   dtRouteA.isAccepted ? 'yes' : 'no'
     });
-    // コメントPDF添付（Google Doc ID が指定されている場合）
+    // コメントPDFをDriveに保存してリンクを取得
+    var commentPdfUrlA = '';
     if (data.commentDocId) {
       try {
         var commentWorkingFolder = driveFolderCache.getOrCreateFolder(
@@ -123,13 +121,9 @@ function apiEicFinalAction(data) {
         var msVerA = msData.MsVer || '';
 
         // ① 原本の先頭にヘッダーを挿入して保存
-        var headerInsertedA = 0;
         try {
           var commentDocA = DocumentApp.openById(data.commentDocId);
-          var bodyA = commentDocA.getBody();
-          var childsBeforeA = bodyA.getNumChildren();
-          insertCommentDocHeader(bodyA, journalNameA, data.decision || '', nowStrA);
-          headerInsertedA = bodyA.getNumChildren() - childsBeforeA;
+          insertCommentDocHeader(commentDocA.getBody(), journalNameA, data.decision || '', nowStrA);
           commentDocA.saveAndClose();
         } catch(eInsertA) {
           Logger.log('Header insertion failed (route a): ' + eInsertA.message);
@@ -139,22 +133,19 @@ function apiEicFinalAction(data) {
         var commentPdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
         commentPdfBlob.setName('Open-Comments-' + msVerA + '.pdf');
 
-        // ③ PDF を Working フォルダに保存
+        // ③ PDF を Working フォルダに保存して共有リンクを発行
         var savedCommentPdf = commentWorkingFolder.createFile(commentPdfBlob);
         savedCommentPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        commentPdfUrlA = savedCommentPdf.getUrl();
         if (data.commentEditorKey) {
           updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
-            { 'reportCommentPdfUrl': savedCommentPdf.getUrl() });
-        }
-        // ⑤ チェックボックスが有効なら取得済みの blob をそのまま添付
-        if (data.attachCommentFile) {
-          eicAttachmentBlobs.push(commentPdfBlob);
+            { 'reportCommentPdfUrl': commentPdfUrlA });
         }
       } catch(e) {
         Logger.log('Comment PDF export failed (route a): ' + e.message);
       }
     }
-    _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, eicAttachmentBlobs);
+    _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, commentPdfUrlA);
     _notifyManagingEditorOfEicRoute(msData, 'a', data.eicAuthorComment, data.eicProductionComment, data.decision || '', settings, ssId);
 
   } else if (route === 'b') {
@@ -408,7 +399,7 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportP
  * DecisionMailテンプレート＋編集幹事・委員長コメントを合わせて送付
  * 委員長の添付ファイルはメールに直接添付する
  */
-function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, eicAttachmentBlobs) {
+function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, commentPdfUrl) {
   var webAppUrl = ScriptApp.getService().getUrl();
   var authorUrl = webAppUrl + '?key=' + (msData.key || '');
 
@@ -452,6 +443,7 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, eicA
   if (submittedFolder) fileParts.push('<li><a href="' + submittedFolder + '" target="_blank">【閲覧専用】投稿原稿フォルダ / Submitted Files Folder</a></li>');
   if (meFileUrl)       fileParts.push('<li><a href="' + meFileUrl       + '" target="_blank">【閲覧専用】編集幹事添付ファイル / Managing Editor\'s Files</a></li>');
   if (eicFileUrl)      fileParts.push('<li><a href="' + eicFileUrl      + '" target="_blank">【閲覧専用】編集委員長添付ファイル / Editor-in-Chief\'s Files</a></li>');
+  if (commentPdfUrl)   fileParts.push('<li><a href="' + commentPdfUrl   + '" target="_blank">【閲覧専用】オープンコメントPDF / Open Comments PDF</a></li>');
   var fileLinksHtml = fileParts.length > 0
     ? '<p><strong>ファイル / Files:</strong></p><ul>' + fileParts.join('') + '</ul>'
     : '';
@@ -493,10 +485,6 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, eicA
     htmlBody: html
   };
   if (bccList.length > 0) mailOptions.bcc = bccList.join(', ');
-  // 委員長添付ファイルをメールに直接添付
-  if (eicAttachmentBlobs && eicAttachmentBlobs.length > 0) {
-    mailOptions.attachments = eicAttachmentBlobs;
-  }
 
   sendEmailSafe(mailOptions, 'Final Route A (to Author): ' + (msData.MsVer || ''));
 }

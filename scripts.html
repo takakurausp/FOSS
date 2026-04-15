@@ -1191,13 +1191,7 @@ function _buildCommentAttachBox(ms, isFinal) {
   var docFldId = isFinal ? 'finalCommentDocId'         : 'commentDocId';
   var edFldId  = isFinal ? 'finalCommentEditorKey'     : 'commentEditorKey';
   return '<input type="hidden" id="' + docFldId + '" value="' + docId + '">'
-       + '<input type="hidden" id="' + edFldId  + '" value="' + edKey  + '">'
-       + '<div class="form-group">'
-       +   '<label>'
-       +     '<input type="checkbox" id="' + cbId + '"> '
-       +     'オープンコメント集PDFを著者メールに添付する / Attach open comments PDF to author email'
-       +   '</label>'
-       + '</div>';
+       + '<input type="hidden" id="' + edFldId  + '" value="' + edKey  + '">';
 }
 
 /**
@@ -1222,8 +1216,8 @@ function buildEditorReportLinksPanel(editorList, decisionSent) {
       items.push(linkDiv('https://docs.google.com/document/d/' + e.reportGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
       items.push(
         '<div style="margin-top:0.15rem; margin-bottom:0.6rem; padding:0.55rem 0.8rem; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:6px; font-size:0.825rem; line-height:1.65; color:#065f46;">' +
-        '編集後のコメント集は、PDFに変換して著者へのメールに添付することができます。添付を希望される場合は、編集後に下のチェックボックスにチェックを入れてから送信してください。<br>' +
-        '<span style="color:#047857;">Once you have finished editing, the compiled comments can be converted to PDF and attached to the email sent to the author. If you wish to include it, please check the box below before submitting.<\/span>' +
+        '編集後のコメント集は送信時にPDFへ変換され、GoogleドライブのリンクとしてメールでEIC添付ファイルとともに著者に共有されます。<br>' +
+        '<span style="color:#047857;">After editing, the compiled comments will be converted to PDF and shared with the author as a Google Drive link alongside the EIC\'s attached files.<\/span>' +
         '<\/div>'
       );
     }
@@ -1555,7 +1549,6 @@ async function submitEicFinalAction(route) {
       eicAuthorComment:     document.getElementById('eicAuthorComment').value,
       eicProductionComment: document.getElementById('eicProductionComment').value,
       files,
-      attachCommentFile: !!(document.getElementById('eicFinalAttachCommentFile') && document.getElementById('eicFinalAttachCommentFile').checked),
       commentDocId:      (document.getElementById('finalCommentDocId')      || {}).value || '',
       commentEditorKey:  (document.getElementById('finalCommentEditorKey')  || {}).value || ''
     });
@@ -1902,7 +1895,6 @@ async function submitFeedback(k) {
     })
     .apiSubmitFeedback({
       msKey: k, score: s, openComments: c, files,
-      attachCommentFile: !!(document.getElementById('eicAttachCommentFile') && document.getElementById('eicAttachCommentFile').checked),
       commentDocId:      (document.getElementById('commentDocId')      || {}).value || '',
       commentEditorKey:  (document.getElementById('commentEditorKey')  || {}).value || ''
     });
