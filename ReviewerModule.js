@@ -51,9 +51,6 @@ function apiAssignReviewers(data) {
     sendReviewerMail(data.emailCandidate2, data.nameCandidate2, data.letterToCandidate2, msData, settings, rev2Key, editorName, editorEmail, reviewDeadline);
   }
   
-  // 6. 編集者自身へ完了確認メールを送付
-  sendReviewerConfirmationToEditor(editorEmail, editorName, data, settings, msVer, msData);
-  
   writeLog(`Reviewers Assigned: ${msVer} by ${editorName} (Target: ${data.nameCandidate1}${data.nameCandidate2 ? ', ' + data.nameCandidate2 : ''})`);
   
   return { success: true, targets: results };

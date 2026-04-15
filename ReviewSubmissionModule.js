@@ -64,9 +64,6 @@ function apiSubmitReview(data) {
   // 7. Send Email to Editor
   sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId);
   
-  // 8. Send Confirmation to Reviewer
-  sendReviewerThankYou(msData.Rev_Email, reviewerName, msData, settings);
-  
   return { success: true };
 }
 

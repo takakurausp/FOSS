@@ -62,9 +62,6 @@ function apiSubmitRecommendation(data) {
     sendRecommendationToChiefEditor(msData, data, reportFiles, settings);
   }
 
-  // 5. 担当編集者への受領確認
-  sendRecommendationConfirmationToEditor(msData, data, todayNow, settings);
-
   writeLog(`Recommendation Submitted: ${msVer} by ${msData.Editor_Name} - Score: ${data.score} (${isAccepted ? 'Accepted→ManagingEditor' : 'NotAccepted→EIC'})`);
 
   return { success: true };
