@@ -167,6 +167,7 @@ function checkReviewerSubmissionReminders(ssId, settings, days) {
   const revOkIdx      = col('revok');
   const rcvAtIdx      = col('received_at');
   const answerAtIdx   = col('answer_at');
+  const askAtIdx      = col('ask_at');
   const deadlineIdx   = col('review_deadline');
   const reviewKeyIdx  = col('reviewkey');
   const revNameIdx    = col('rev_name');
@@ -190,7 +191,7 @@ function checkReviewerSubmissionReminders(ssId, settings, days) {
 
     // 承諾日（Answer_At）を基準日とする。なければ Ask_At を使用。
     const baseRaw = (answerAtIdx !== -1 && row[answerAtIdx])
-      ? row[answerAtIdx] : (col('ask_at') !== -1 ? row[col('ask_at')] : null);
+      ? row[answerAtIdx] : (askAtIdx !== -1 ? row[askAtIdx] : null);
     if (!baseRaw) continue;
     const baseDate = new Date(baseRaw);
     if (isNaN(baseDate)) continue;
