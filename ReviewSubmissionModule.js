@@ -55,11 +55,14 @@ function apiSubmitReview(data) {
   DriveApp.getFileById(confDoc.getId()).moveTo(revFolder);
 
   // 5. Drive/Docs が全て成功した後に DB をまとめて更新
-  updateReviewLogCell(ssId, hexId, 'Received_At', todayNow);
-  updateReviewLogCell(ssId, hexId, 'Score', data.score);
-  updateReviewLogCell(ssId, hexId, 'reviewerUploadFolderUrl', reviewFolderUrl);
-  updateReviewLogCell(ssId, hexId, 'openCommentsId', openDoc.getId());
-  updateReviewLogCell(ssId, hexId, 'confidentialCommentsId', confDoc.getId());
+  // updateReviewLogCells で1回読み込み・1回書き込みにまとめる（旧: 5回個別呼び出し）
+  updateReviewLogCells(ssId, hexId, {
+    'Received_At':             todayNow,
+    'Score':                   data.score,
+    'reviewerUploadFolderUrl': reviewFolderUrl,
+    'openCommentsId':          openDoc.getId(),
+    'confidentialCommentsId':  confDoc.getId()
+  });
   
   // 7. Send Email to Editor
   sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId);
@@ -67,16 +70,33 @@ function apiSubmitReview(data) {
   return { success: true };
 }
 
-function updateReviewLogCell(ssId, hexId, colName, value) {
+/**
+ * ReviewLog シートの対象行を一括更新する
+ * @param {string} ssId   - スプレッドシート ID
+ * @param {string} hexId  - 更新対象行の MsVerRevHex 値
+ * @param {Object} updates - { 列名: 値, ... } の形式で更新内容を渡す
+ *
+ * シートを1回だけ読み込み、対象行の配列を更新してから行全体を1回の setValues で
+ * 書き戻すことで、旧実装（列ごとに個別呼び出し）の複数回フルスキャンを解消する。
+ */
+function updateReviewLogCells(ssId, hexId, updates) {
   const sheet = SpreadsheetApp.openById(ssId).getSheetByName(REVIEW_LOG_SHEET_NAME);
   const data = sheet.getDataRange().getValues();
-  const hexIdx = data[0].indexOf('MsVerRevHex');
-  const colIdx = data[0].indexOf(colName);
-  if (hexIdx === -1 || colIdx === -1) return;
-  const row = data.findIndex(r => r[hexIdx] === hexId);
-  if (row > 0) {
-    sheet.getRange(row + 1, colIdx + 1).setValue(value);
-  }
+  const headers = data[0];
+  const hexIdx = headers.indexOf('MsVerRevHex');
+  if (hexIdx === -1) return;
+
+  // data[0] はヘッダー行なので i > 0 から探索する
+  const rowIdx = data.findIndex((r, i) => i > 0 && r[hexIdx] === hexId);
+  if (rowIdx <= 0) return;
+
+  // 対象行を配列としてコピーし、更新フィールドだけ上書きしてから行全体を一括書き込み
+  const rowData = data[rowIdx].slice();
+  Object.entries(updates).forEach(function([colName, value]) {
+    const colIdx = headers.indexOf(colName);
+    if (colIdx !== -1) rowData[colIdx] = value;
+  });
+  sheet.getRange(rowIdx + 1, 1, 1, rowData.length).setValues([rowData]);
 }
 
 function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId) {

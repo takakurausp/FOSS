@@ -313,10 +313,33 @@ function getEicManuscriptData(ssId, key) {
   if (msIdForHistory) {
     const allVersions = findAllRecordsByKey(ssId, MANUSCRIPTS_SHEET_NAME, 'MS_ID', msIdForHistory);
     allVersions.sort((a, b) => Number(a.Ver_No || 0) - Number(b.Ver_No || 0));
-    
+
+    // 全バージョン分の EditorLog を一括取得して MsVer でグループ化する。
+    // ループ内で findAllRecordsByKey を N+1 回呼ぶ代わりに、キャッシュを1回だけ走査し
+    // 対象 MsVer に絞り込んでから { MsVer: logs[] } の辞書を構築する。
+    const allVersionMsVerSet = new Set(
+      allVersions.map(v => String(v.MsVer || '').trim()).filter(Boolean)
+    );
+    const edLogByMsVer = {};
+    const edCacheEntry = spreadsheetCache.getSheetData(ssId, EDITOR_LOG_SHEET_NAME);
+    if (edCacheEntry) {
+      const edHdrs = edCacheEntry.headers.map(h => String(h).trim());
+      const edMsVerIdx = edHdrs.indexOf('MsVer');
+      if (edMsVerIdx !== -1) {
+        edCacheEntry.rows.forEach(function(row) {
+          const mv = String(row[edMsVerIdx] || '').trim();
+          if (!allVersionMsVerSet.has(mv)) return; // このMS以外の行は無視
+          const obj = {};
+          edHdrs.forEach((h, i) => { obj[h] = row[i]; });
+          if (!edLogByMsVer[mv]) edLogByMsVer[mv] = [];
+          edLogByMsVer[mv].push(obj);
+        });
+      }
+    }
+
     msData._versionHistory = allVersions.map(v => {
       const vMsVer = String(v.MsVer || '').trim();
-      const vEditorLogs = findAllRecordsByKey(ssId, EDITOR_LOG_SHEET_NAME, 'MsVer', vMsVer);
+      const vEditorLogs = edLogByMsVer[vMsVer] || [];
       const vAcceptedEditor = vEditorLogs.find(log => String(log.edtOk || '').trim() === 'ok');
 
       return {
@@ -331,13 +354,13 @@ function getEicManuscriptData(ssId, key) {
     });
 
     // 前バージョンの担当編集者情報（再投稿時の編集者指名フォームの初期値として使用）
+    // edLogByMsVer は構築済みのためキャッシュ走査なしで参照できる
     const currentVerNo = Number(msData.Ver_No || 1);
     if (currentVerNo > 1) {
       const prevVersion = allVersions.find(v => Number(v.Ver_No || 0) === currentVerNo - 1);
       if (prevVersion) {
         const prevMsVer = String(prevVersion.MsVer || '').trim();
-        const prevEditorLogs = findAllRecordsByKey(ssId, EDITOR_LOG_SHEET_NAME, 'MsVer', prevMsVer);
-        const prevAcceptedEditor = prevEditorLogs.find(
+        const prevAcceptedEditor = (edLogByMsVer[prevMsVer] || []).find(
           log => String(log.edtOk || '').trim() === 'ok'
         );
         if (prevAcceptedEditor) {
@@ -497,28 +520,12 @@ function getEditorManuscriptData(ssId, key) {
   msData._allReviewsIn = (msData._reviewCompletedCount > 0) && !hasIncomplete;
   
   // 進捗ステータスの決定
-  // 注: Manuscripts シートの最終判定列は小文字 'score' で保存されるため両方チェック
-  const msFinalScore     = (fullMs || {}).score || (fullMs || {}).Score;
-  const msSentBackAt     = (fullMs || {}).sentBackAt;
-  const msEicDecision    = (fullMs || {}).eicFinalDecision;
-  const msInProduction   = (fullMs || {}).finalStatus === 'in_production';
-  const editorRecScore   = editorLog.Score;
-
-  // 全査読が完了したかどうか（承諾済み査読者全員が結果を提出）
-  const allReviewsCompleted = acceptedReviewers.length > 0 &&
-                             acceptedReviewers.length === completedReviews.length;
-
-  if (msInProduction) {
-    msData._progressStatus = 'in_production';
-  } else if (msFinalScore || msSentBackAt || msEicDecision) {
-    msData._progressStatus = 'decision';
-  } else if (editorRecScore || allReviewsCompleted) {
-    msData._progressStatus = 'reviewed';
-  } else if (acceptedReviewers.length > 0) {
-    msData._progressStatus = 'reviewing';
-  } else {
-    msData._progressStatus = 'editor_assigned';
-  }
+  // determineProgressStatus() を使用することで、stoppedByEicAt による即時却下を含む
+  // すべての状態を他ロールと同一ロジックで正しく反映する。
+  // EditorLog の全レコード（複数編集者が候補に上がった場合も含む）を取得して渡す。
+  // findAllRecordsByKey は spreadsheetCache 経由のため実質キャッシュヒット。
+  const editorLogs = findAllRecordsByKey(ssId, EDITOR_LOG_SHEET_NAME, 'MsVer', msVer);
+  msData._progressStatus = determineProgressStatus(fullMs || {}, editorLogs, reviewLogs);
   
   msData._scoreOptions = getScoreOptions();
   
@@ -580,18 +587,23 @@ function getManagingEditorManuscriptData(ssId, managingEditorKey) {
   const fmt = createDateFormatter(ssId);
 
   // 担当編集者リスト（コメント・レポートファイル含む）
+  // EIC 用 _editorList と同じファイル URL フィールドを揃える
+  // （reportCommentPdfUrl は Drive リンク共有方式に変更済み）
   msData._editorList = editorLogs.map(log => ({
-    Editor_Name:         String(log.Editor_Name         || '').trim(),
-    Editor_Email:        String(log.Editor_Email        || '').trim(),
-    edtOk:               String(log.edtOk               || '').trim(),
-    Ask_At:              fmt(log.Ask_At),
-    Answer_At:           fmt(log.Answer_At),
-    Score:               String(log.Score               || '').trim(),
-    Message:             String(log.Message             || '').trim(),
-    ConfidentialMessage: String(log.ConfidentialMessage || '').trim(),
-    reportPdfUrl:        String(log.reportPdfUrl        || '').trim(),
-    reportWordUrl:       String(log.reportWordUrl       || '').trim(),
-    reportFolderUrl:     String(log.reportFolderUrl     || '').trim()
+    Editor_Name:                String(log.Editor_Name                || '').trim(),
+    Editor_Email:               String(log.Editor_Email               || '').trim(),
+    edtOk:                      String(log.edtOk                      || '').trim(),
+    Ask_At:                     fmt(log.Ask_At),
+    Answer_At:                  fmt(log.Answer_At),
+    Score:                      String(log.Score                      || '').trim(),
+    Message:                    String(log.Message                    || '').trim(),
+    ConfidentialMessage:        String(log.ConfidentialMessage        || '').trim(),
+    reportPdfUrl:               String(log.reportPdfUrl               || '').trim(),
+    reportWordUrl:              String(log.reportWordUrl              || '').trim(),
+    reportFolderUrl:            String(log.reportFolderUrl            || '').trim(),
+    reportAttachmentsFolderUrl: String(log.reportAttachmentsFolderUrl || '').trim(),
+    reportGoogleDocId:          String(log.reportGoogleDocId          || '').trim(),
+    reportCommentPdfUrl:        String(log.reportCommentPdfUrl        || '').trim()
   }));
 
   // 担当編集者の推薦情報（後方互換のため残す）

@@ -154,7 +154,7 @@ function apiEicFinalAction(data) {
       'finalStatus': 'in_production',
       'accepted':    'yes'
     });
-    _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings, eicAttachmentBlobs);
+    _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings);
     _notifyAuthorOfAcceptance(msData, data, settings, ssId);
     _notifyManagingEditorOfEicRoute(msData, 'b', data.eicAuthorComment, data.eicProductionComment, data.decision || '', settings, ssId);
 
@@ -492,9 +492,9 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, comm
 /**
  * ルートb: 印刷担当者への通知メール
  * 原稿基本情報・印刷関連情報・各種コメント＋受領票PDFを添付
- * @param {Blob[]} eicAttachmentBlobs  委員長アップロードファイルのBlob配列
+ * 委員長アップロードファイルはメール添付ではなく eicFileUrl（Drive リンク）で共有する
  */
-function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings, eicAttachmentBlobs) {
+function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings) {
   if (!settings.productionEditorEmail) {
     Logger.log('_sendFinalRouteBToProductionEditor: productionEditorEmail 未設定のためスキップ');
     return;
@@ -561,8 +561,8 @@ function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings, 
     '</table>' +
     fileLinksHtml +
     '<hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">' +
-    '<p>原稿受領票（PDF）を添付いたします。委員長が添付したファイルも合わせてご確認ください。</p>' +
-    '<p>Please find the manuscript receipt (PDF) attached. Files uploaded by the Editor-in-Chief are also attached if any.</p>';
+    '<p>原稿受領票（PDF）を添付いたします。委員長のアップロードファイルは上記の Drive リンクよりご確認ください。</p>' +
+    '<p>Please find the manuscript receipt (PDF) attached. Files uploaded by the Editor-in-Chief are available via the Drive link above.</p>';
 
   var html = renderRichEmail({
     journalName: settings.Journal_Name,
@@ -571,12 +571,9 @@ function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings, 
     footerHtml: settings.mailFooter || ''
   });
 
-  // 添付ファイル: 受領票PDF + 委員長アップロードファイル
+  // 添付ファイル: 受領票PDF のみ（委員長ファイルは Drive リンクで共有済み）
   var attachments = [];
   if (receiptBlob) attachments.push(receiptBlob);
-  if (eicAttachmentBlobs && eicAttachmentBlobs.length > 0) {
-    eicAttachmentBlobs.forEach(function(b) { attachments.push(b); });
-  }
 
   // BCC: 編集幹事 + 担当編集者
   var bccListB = [];
@@ -807,23 +804,29 @@ function apiStopManuscriptByEic(data) {
 
   // 著者への通知メール送信
   if (data.message) {
-    var settings = getSettings();
-    var journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : 'Journal';
-    var msVer = msData.MsVer || '';
-    var bodyHtml = String(data.message)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\n/g, '<br>');
-    var html = renderRichEmail({
-      journalName: journalName,
-      greeting:    '',
-      bodyHtml:    bodyHtml,
-      footerHtml:  settings.mailFooter || ''
-    });
-    sendEmailSafe({
-      to:       msData.CA_Email,
-      subject:  '[' + journalName + '] 原稿の掲載見合わせについて / Manuscript Not Accepted: ' + msVer,
-      htmlBody: html
-    }, 'EIC Early Rejection Notification: ' + msVer);
+    var caEmail = String(msData.CA_Email || '').trim();
+    if (!caEmail) {
+      // CA_Email が未設定の場合はメールをスキップしてログに記録し、DB更新は維持する
+      writeLog('EIC Early Rejection: CA_Email missing, email skipped for ' + (msData.MsVer || ''));
+    } else {
+      var settings = getSettings();
+      var journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : 'Journal';
+      var msVer = msData.MsVer || '';
+      var bodyHtml = String(data.message)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+      var html = renderRichEmail({
+        journalName: journalName,
+        greeting:    '',
+        bodyHtml:    bodyHtml,
+        footerHtml:  settings.mailFooter || ''
+      });
+      sendEmailSafe({
+        to:       caEmail,
+        subject:  '[' + journalName + '] 原稿の掲載見合わせについて / Manuscript Not Accepted: ' + msVer,
+        htmlBody: html
+      }, 'EIC Early Rejection Notification: ' + msVer);
+    }
   }
 
   writeLog('EIC Stopped Manuscript (Early Rejection): ' + (msData.MsVer || ''));

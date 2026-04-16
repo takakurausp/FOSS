@@ -162,10 +162,19 @@ function getProgressSummary(ssId) {
   const edLog = SpreadsheetApp.openById(ssId).getSheetByName(EDITOR_LOG_SHEET_NAME).getDataRange().getValues();
   const revLog = SpreadsheetApp.openById(ssId).getSheetByName(REVIEW_LOG_SHEET_NAME).getDataRange().getValues();
 
-  const msHeaders = msData[0];
-  const acceptedIdx = msHeaders.indexOf('accepted');
-  const scoreIdx = msHeaders.indexOf('score');
-  const stoppedIdx = msHeaders.indexOf('stoppedByEicAt');
+  // Manuscripts シートのヘッダーインデックス（ループ外で一度だけ解決する）
+  const msHeaders     = msData[0];
+  const acceptedIdx   = msHeaders.indexOf('accepted');
+  const scoreIdx      = msHeaders.indexOf('score');
+  const stoppedIdx    = msHeaders.indexOf('stoppedByEicAt');
+  const msVerIdx      = msHeaders.indexOf('MsVer');
+  const sentBackAtIdx = msHeaders.indexOf('sentBackAt');
+
+  // EditorLog シートのヘッダーインデックス（列順に依存しないよう名前で解決する）
+  const edHeaders  = edLog[0];
+  const edMsVerIdx = edHeaders.indexOf('MsVer');
+  const edOkIdx    = edHeaders.indexOf('edtOk');
+  const edLogRows  = edLog.slice(1); // ヘッダー行を除いたデータ行
 
   const pendingMss = msData.slice(1).filter(row =>
     (row[acceptedIdx] === '' || row[acceptedIdx] === null) &&
@@ -175,13 +184,14 @@ function getProgressSummary(ssId) {
   return {
     totalPending: pendingMss.length,
     waitingEditor: pendingMss.filter(row => {
-      const msVer = row[msHeaders.indexOf('MsVer')];
-      const assigned = edLog.slice(1).filter(e => e[0] === msVer && e[edLog[0].indexOf('edtOk')] === 'ok');
+      const msVer = row[msVerIdx];
+      const assigned = edLogRows.filter(e => e[edMsVerIdx] === msVer && e[edOkIdx] === 'ok');
       return assigned.length === 0;
     }).length,
-    inReview: pendingMss.filter(row => row[scoreIdx] === '').length,
+    // score が空の原稿数。waitingEditor（担当未定）も内包するため「判定前合計」と表示する
+    pendingDecision: pendingMss.filter(row => row[scoreIdx] === '').length,
     decidedThisWeek: msData.slice(1).filter(row => {
-      const date = new Date(row[msHeaders.indexOf('sentBackAt')]);
+      const date = new Date(row[sentBackAtIdx]);
       return !isNaN(date.getTime()) && (new Date().getTime() - date.getTime()) < 7 * 24 * 60 * 60 * 1000;
     }).length
   };
@@ -231,8 +241,8 @@ function generateReportHtml(journalName, dateRange, logs, summary) {
         <div class="stat-label">Waiting Editor / 担当未定</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">${summary.inReview}</div>
-        <div class="stat-label">In Review / 査読中</div>
+        <div class="stat-value">${summary.pendingDecision}</div>
+        <div class="stat-label">判定前合計 / Pending Decision</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">${summary.decidedThisWeek}</div>
