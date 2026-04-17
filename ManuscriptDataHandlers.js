@@ -210,6 +210,14 @@ function getAuthorManuscriptData(ssId, key) {
 
   msData._progressStatus = determineProgressStatus(msData, editorLogs, reviewLogs);
 
+  // 担当編集者ログからオープンコメントPDF URLを取得（ダッシュボード表示用）
+  const commentPdfEntry = editorLogs.find(function(log) {
+    return String(log.reportCommentPdfUrl || '').trim() !== '';
+  });
+  msData.reportCommentPdfUrl = commentPdfEntry
+    ? String(commentPdfEntry.reportCommentPdfUrl || '').trim()
+    : '';
+
   // 判定スコアに基づいて「再提出が可能か」を判定してフラグを付記
   if (msData.score) {
     const templates = getDecisionTemplates(ssId, msData.score);

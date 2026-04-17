@@ -237,10 +237,7 @@ function sendReviewerWelcomeEmail(reviewLog, ms, settings) {
     });
   }
 
-  // 2. 投稿原稿フォルダURL（Manuscripts シートの folderUrl を優先使用）
-  const submittedFolderUrl = ms.folderUrl || ms.submittedFolderUrl || '';
-
-  // 3. 査読期限
+  // 2. 査読期限
   const deadline = reviewLog.Review_Deadline || reviewLog.review_deadline || '';
 
   // 4. メール送信
@@ -249,24 +246,6 @@ function sendReviewerWelcomeEmail(reviewLog, ms, settings) {
   const paperTitle = (ms.TitleJP && ms.TitleEN)
     ? ms.TitleJP + ' / ' + ms.TitleEN
     : (ms.TitleJP || ms.TitleEN || '');
-
-  const submittedFolderRow = submittedFolderUrl
-    ? `<tr>
-         <th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:35%;">Submitted Files / 投稿原稿</th>
-         <td style="padding:8px; border-bottom:1px solid #eee;">
-           <a href="${submittedFolderUrl}" target="_blank">投稿原稿フォルダを開く / Open Submitted Files</a>
-         </td>
-       </tr>`
-    : '';
-
-  const materialRow = materialUrl
-    ? `<tr>
-         <th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">Review Materials / 査読資料</th>
-         <td style="padding:8px; border-bottom:1px solid #eee;">
-           <a href="${materialUrl}" target="_blank">査読資料フォルダを開く / Open Review Materials</a>
-         </td>
-       </tr>`
-    : '';
 
   const deadlineRow = deadline
     ? `<tr>
@@ -290,8 +269,6 @@ function sendReviewerWelcomeEmail(reviewLog, ms, settings) {
         <td style="padding:8px; border-bottom:1px solid #eee;">${paperTitle}</td>
       </tr>` : ''}
       ${deadlineRow}
-      ${submittedFolderRow}
-      ${materialRow}
     </table>
     <p>
       Please open your reviewer dashboard via the button below and submit your review results by the deadline.<br>

@@ -420,7 +420,7 @@ function sendRecommendationToManagingEditor(msData, data, reportFiles, settings,
  */
 function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
   const uploadedFiles = reportFiles.uploadedFiles || [];
-  const folderUrl     = reportFiles.folderUrl     || '';
+  const folderUrl     = reportFiles.attachmentsFolderUrl || '';
   const webAppUrl = ScriptApp.getService().getUrl();
   const decisionLink = webAppUrl + '?eicKey=' + msData.eicKey;
 

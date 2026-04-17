@@ -167,8 +167,6 @@ function sendEicNotification(ms, pdfBlob) {
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${escHtml(ms.paperType)}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Title</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${escHtml(paperTitle)}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Author</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${escHtml(ms.authorName)} (${escHtml(ms.authorEmail)})</td></tr>
-      <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Submitted Files / 投稿原稿</th><td style="padding: 8px; border-bottom: 1px solid #eee;"><a href="${ms.folderUrl}" target="_blank">View Submitted Files / 投稿フォルダを確認する</a></td></tr>
-      ${ms.receiptFolderUrl ? `<tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Receipt / 受領票</th><td style="padding: 8px; border-bottom: 1px solid #eee;"><a href="${ms.receiptFolderUrl}" target="_blank">View Receipt PDF / 受領票フォルダを確認する</a></td></tr>` : ''}
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (JP)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${escHtml(ms.abstractJp || 'N/A')}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (EN)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${escHtml(ms.abstractEn || 'N/A')}</td></tr>
     </table>

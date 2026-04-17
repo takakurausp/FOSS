@@ -353,11 +353,6 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportP
   var eicLink = webAppUrl + '?eicKey=' + (msData.eicKey || '');
   var paperTitle = _buildPaperTitle(msData);
 
-  var fileLinkHtml = fileUrl
-    ? '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">編集幹事アップロードファイル<br><span style="font-size:0.85em;font-weight:normal;">Managing Editor\'s Files</span></th>' +
-      '<td style="padding:8px; border-bottom:1px solid #eee;"><a href="' + fileUrl + '" target="_blank">【閲覧専用】フォルダを開く / Open Read-Only Folder</a></td></tr>'
-    : '';
-
   var bodyHtml =
     '<p>編集幹事より、受理原稿の最終確認レビューが送信されました。</p>' +
     '<p>Managing editor has completed the initial review of the accepted manuscript.</p>' +
@@ -370,7 +365,6 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportP
           '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(data.authorComment || '(なし / None)') + '</td></tr>' +
       '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">内部用コメント<br><span style="font-size:0.85em;font-weight:normal;">Internal Comment</span></th>' +
           '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(data.internalComment || '(なし / None)') + '</td></tr>' +
-      fileLinkHtml +
     '</table>' +
     '<p>以下のボタンから委員長ダッシュボードにアクセスし、最終アクションをご実施ください。</p>' +
     '<p>Please access the EIC dashboard below to take the final action.</p>';
@@ -405,9 +399,6 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, comm
 
   var meAuthorComment = msData.managingEditorAuthorComment || '';
   var eicComment      = data.eicAuthorComment || '';
-  var meFileUrl       = msData.managingEditorFileUrl || '';
-  var submittedFolder = msData.submittedFolderUrl || msData.folderUrl || '';
-
   // DecisionMailシートからテンプレートを取得
   var decisionTemplates = getDecisionTemplates(ssId || getSpreadsheetId(), data.decision || '');
   var resubmissionUrl = authorUrl;
@@ -438,12 +429,11 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, comm
     (meAuthorComment ? '<p><strong>編集幹事よりのコメント / Comments from Managing Editor:</strong><br>' + escHtml(meAuthorComment).replace(/\n/g, '<br>') + '</p>' : '') +
     (eicComment      ? '<p><strong>編集委員長よりのコメント / Comments from Editor-in-Chief:</strong><br>' + escHtml(eicComment).replace(/\n/g, '<br>') + '</p>' : '');
 
-  // ファイルリンク（Drive フォルダへの閲覧リンク）
+  // ファイルリンク（著者へ送付するもののみ: EICファイル・コメントPDF）
+  // 投稿原稿フォルダ・編集幹事ファイルはダッシュボードから参照
   var fileParts = [];
-  if (submittedFolder) fileParts.push('<li><a href="' + submittedFolder + '" target="_blank">【閲覧専用】投稿原稿フォルダ / Submitted Files Folder</a></li>');
-  if (meFileUrl)       fileParts.push('<li><a href="' + meFileUrl       + '" target="_blank">【閲覧専用】編集幹事添付ファイル / Managing Editor\'s Files</a></li>');
-  if (eicFileUrl)      fileParts.push('<li><a href="' + eicFileUrl      + '" target="_blank">【閲覧専用】編集委員長添付ファイル / Editor-in-Chief\'s Files</a></li>');
-  if (commentPdfUrl)   fileParts.push('<li><a href="' + commentPdfUrl   + '" target="_blank">【閲覧専用】オープンコメントPDF / Open Comments PDF</a></li>');
+  if (eicFileUrl)    fileParts.push('<li><a href="' + eicFileUrl    + '" target="_blank">【閲覧専用】編集委員長添付ファイル / Editor-in-Chief\'s Files</a></li>');
+  if (commentPdfUrl) fileParts.push('<li><a href="' + commentPdfUrl + '" target="_blank">【閲覧専用】オープンコメントPDF / Open Comments PDF</a></li>');
   var fileLinksHtml = fileParts.length > 0
     ? '<p><strong>ファイル / Files:</strong></p><ul>' + fileParts.join('') + '</ul>'
     : '';
