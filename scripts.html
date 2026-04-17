@@ -1190,7 +1190,11 @@ function _buildCommentAttachBox(ms, isFinal) {
   var cbId     = isFinal ? 'eicFinalAttachCommentFile' : 'eicAttachCommentFile';
   var docFldId = isFinal ? 'finalCommentDocId'         : 'commentDocId';
   var edFldId  = isFinal ? 'finalCommentEditorKey'     : 'commentEditorKey';
-  return '<input type="hidden" id="' + docFldId + '" value="' + docId + '">'
+  return '<div style="margin:0.75rem 0; display:flex; align-items:center; gap:0.5rem;">'
+       + '<input type="checkbox" id="' + cbId + '" checked style="width:16px; height:16px; cursor:pointer;">'
+       + '<label for="' + cbId + '" style="font-size:0.875rem; color:#374151; cursor:pointer;">オープンコメントをPDF化して共有フォルダに含める / Include open-comments PDF in shared folder</label>'
+       + '</div>'
+       + '<input type="hidden" id="' + docFldId + '" value="' + docId + '">'
        + '<input type="hidden" id="' + edFldId  + '" value="' + edKey  + '">';
 }
 
@@ -1549,8 +1553,10 @@ async function submitEicFinalAction(route) {
       eicAuthorComment:     document.getElementById('eicAuthorComment').value,
       eicProductionComment: document.getElementById('eicProductionComment').value,
       files,
-      commentDocId:      (document.getElementById('finalCommentDocId')      || {}).value || '',
-      commentEditorKey:  (document.getElementById('finalCommentEditorKey')  || {}).value || ''
+      commentDocId:      (document.getElementById('eicFinalAttachCommentFile') || {}).checked !== false
+                           ? (document.getElementById('finalCommentDocId')      || {}).value || '' : '',
+      commentEditorKey:  (document.getElementById('eicFinalAttachCommentFile') || {}).checked !== false
+                           ? (document.getElementById('finalCommentEditorKey')  || {}).value || '' : ''
     });
 }
 
@@ -1895,8 +1901,10 @@ async function submitFeedback(k) {
     })
     .apiSubmitFeedback({
       msKey: k, score: s, openComments: c, files,
-      commentDocId:      (document.getElementById('commentDocId')      || {}).value || '',
-      commentEditorKey:  (document.getElementById('commentEditorKey')  || {}).value || ''
+      commentDocId:      (document.getElementById('eicAttachCommentFile') || {}).checked !== false
+                           ? (document.getElementById('commentDocId')      || {}).value || '' : '',
+      commentEditorKey:  (document.getElementById('eicAttachCommentFile') || {}).checked !== false
+                           ? (document.getElementById('commentEditorKey')  || {}).value || '' : ''
     });
 }
 
