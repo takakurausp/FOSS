@@ -2000,9 +2000,14 @@ function handleStopByEicConfirm() {
   var message = document.getElementById('stop-review-message').value.trim();
   if (!message) { alert('メッセージを入力してください。'); return; }
   if (!confirm('この原稿の審査を停止し、著者に通知メールを送信しますか？\nAre you sure you want to stop review and notify the author?')) return;
+  var btn = document.querySelector('#stop-review-form-area button[onclick="handleStopByEicConfirm()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '送信中... / Sending...'; btn.style.background = '#94a3b8'; btn.style.cursor = 'not-allowed'; }
   google.script.run
     .withSuccessHandler(() => renderAuthorView(document.getElementById('main-content')))
-    .withFailureHandler(err => alert('エラー: ' + err.message))
+    .withFailureHandler(err => {
+      alert('エラー: ' + err.message);
+      if (btn) { btn.disabled = false; btn.textContent = '停止して著者に送信 / Stop & Notify Author'; btn.style.background = '#dc2626'; btn.style.cursor = 'pointer'; }
+    })
     .apiStopManuscriptByEic({ eicKey: USER_KEY, message: message });
 }
 
