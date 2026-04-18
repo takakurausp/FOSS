@@ -1209,8 +1209,9 @@ function _buildCommentAttachBox(ms, isFinal) {
  * 担当編集者のレポートリンク（PDF・Word）をパネル外に表示するブロック
  * 査読過程全体に関わる資料として、担当編集者アコーディオンの外に独立して配置する。
  */
-function buildEditorReportLinksPanel(editorList, decisionSent) {
-  decisionSent = !!decisionSent;
+function buildEditorReportLinksPanel(editorList, decisionSent, allowDocEdit) {
+  decisionSent  = !!decisionSent;
+  allowDocEdit  = (allowDocEdit === undefined) ? true : !!allowDocEdit;
   const reported = (editorList || []).filter(e => e.Score && (e.reportPdfUrl || e.reportWordUrl));
   if (reported.length === 0) return '';
 
@@ -1223,7 +1224,7 @@ function buildEditorReportLinksPanel(editorList, decisionSent) {
     var e = reported[i];
     if (e.reportPdfUrl)        items.push(linkDiv(e.reportPdfUrl, '#2563eb', '📄 レポート（PDF） / Report (PDF)'));
     if (e.reportWordUrl)       items.push(linkDiv(e.reportWordUrl, '#2563eb', '📝 オープンコメント集（Word） / Open Comments (Word)'));
-    if (e.reportGoogleDocId && !decisionSent) {
+    if (e.reportGoogleDocId && !decisionSent && allowDocEdit) {
       items.push(linkDiv('https://docs.google.com/document/d/' + e.reportGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
       items.push(
         '<div style="margin-top:0.15rem; margin-bottom:0.6rem; padding:0.55rem 0.8rem; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:6px; font-size:0.825rem; line-height:1.65; color:#065f46;">' +
@@ -1388,6 +1389,7 @@ function renderManagingEditorView(container) {
               <input type="file" id="mf" multiple style="display:block; margin-top:0.25rem; font-size:0.9rem;">
             </div>
           </div>
+          <input type="hidden" id="mrdid" value="${(ms._editorList || []).map(e => e.reportGoogleDocId || '').filter(Boolean).join(',').split(',')[0] || ''}">
           <button type="submit" id="msb" style="background:#1d4ed8; color:#fff; padding:12px 28px; border:none; border-radius:6px; font-weight:600; font-size:1rem; cursor:pointer;">
             委員長へ送信 / Send to EIC
           </button>
@@ -1407,7 +1409,7 @@ function renderManagingEditorView(container) {
           </div>` : ''}
         ${buildEditorReviewResultsPanel(ms._reviewerList || [])}
         ${buildMeEditorPanel(ms._editorList || [])}
-        ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt || ms.eicFinalDecision))}
+        ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt || ms.eicFinalDecision), false)}
         ${formOrConfirm}
         ${_buildFinalDecisionBanner(ms)}
       </div>`;
@@ -1455,6 +1457,7 @@ async function submitMeReview(key) {
       managingEditorKey: key,
       authorComment:     document.getElementById('ma').value,
       internalComment:   document.getElementById('mi').value,
+      reportGoogleDocId: (document.getElementById('mrdid') || {}).value || '',
       files:             files
     });
 }

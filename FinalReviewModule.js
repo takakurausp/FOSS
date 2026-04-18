@@ -18,7 +18,11 @@
 
 /**
  * 編集幹事が委員長にレビューを送信するAPI
- * data: { managingEditorKey, authorComment, internalComment, files[] }
+ * data: { managingEditorKey, authorComment, internalComment, reportGoogleDocId, files[] }
+ *
+ * 編集幹事のオープンコメントは、担当編集者・査読者のコメントが既に書き込まれた
+ * Google Docs（reportGoogleDocId）にセクションを追加する形で保存する。
+ * EIC はこの Google Docs を編集・確認したうえで PDF 化して著者に送付する。
  */
 function apiSubmitManagingEditorReview(data) {
   const ssId = getSpreadsheetId();
@@ -40,6 +44,31 @@ function apiSubmitManagingEditorReview(data) {
     });
     meFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     fileUrl = meFolder.getUrl();
+  }
+
+  // 編集幹事の著者宛コメントをオープンコメント集 Google Docs に追記
+  // （フロントエンドから渡された reportGoogleDocId を優先し、
+  //   未渡しの場合は EditorLog から取得する）
+  var docId = (data.reportGoogleDocId || '').trim();
+  if (!docId && msData._editorList && msData._editorList.length > 0) {
+    for (var ei = 0; ei < msData._editorList.length; ei++) {
+      var eDoc = (msData._editorList[ei].reportGoogleDocId || '').trim();
+      if (eDoc) { docId = eDoc; break; }
+    }
+  }
+  if (docId && data.authorComment && data.authorComment.trim()) {
+    try {
+      var doc  = DocumentApp.openById(docId);
+      var body = doc.getBody();
+      // セクション区切り
+      body.appendHorizontalRule();
+      var header = body.appendParagraph('Section 3: Managing Editor\'s Comments / 編集幹事コメント');
+      header.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+      body.appendParagraph(data.authorComment.trim());
+      doc.saveAndClose();
+    } catch (docErr) {
+      Logger.log('ME comment append to Google Doc failed: ' + docErr.message);
+    }
   }
 
   // Manuscripts シートを更新
