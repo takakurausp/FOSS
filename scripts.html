@@ -2340,6 +2340,36 @@ function renderEicOverview(container) {
 // ── ドラッグ&ドロップ ファイルアップロード（全フォーム共通） ──
 (function () {
   function getZone(el) { return el && el.closest ? el.closest('.file-drop-zone') : null; }
+
+  // ファイル選択後にファイル名リストを更新する共通処理
+  function updateFileNameDisplay(input) {
+    var zone = getZone(input);
+    if (!zone) return;
+    // 既存のリスト要素を探すか新規作成
+    var list = zone.querySelector('.file-names-list');
+    if (!list) {
+      list = document.createElement('ul');
+      list.className = 'file-names-list';
+      list.style.cssText = 'margin:0.4rem 0 0; padding-left:1.2rem; font-size:0.85rem; color:#374151; line-height:1.7; list-style:disc;';
+      input.insertAdjacentElement('afterend', list);
+    }
+    list.innerHTML = '';
+    if (input.files && input.files.length > 0) {
+      Array.from(input.files).forEach(function (f) {
+        var li = document.createElement('li');
+        li.textContent = f.name;
+        list.appendChild(li);
+      });
+    }
+  }
+
+  // 全フォームの file-drop-zone 内の input[type="file"] に change リスナーを委任
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.type === 'file' && getZone(e.target)) {
+      updateFileNameDisplay(e.target);
+    }
+  });
+
   document.addEventListener('dragover', function (e) {
     var z = getZone(e.target);
     if (z) { e.preventDefault(); z.classList.add('drag-over'); }
