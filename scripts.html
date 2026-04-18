@@ -521,7 +521,7 @@ function renderAuthorView(container) {
               <div style="margin-top:1.5rem; padding:1.25rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
                 <h4 style="margin:0 0 1rem; font-size:1rem; font-weight:700; color:#1e293b;">編集幹事からのフィードバック / Managing Editor's Feedback</h4>
                 <div style="margin-bottom:1rem;">
-                  <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">① 著者宛コメント / Comment for Author</p>
+                  <p style="margin:0 0 0.35rem; font-size:0.78rem; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">① 著者宛コメント / Comment for Author <span style="font-size:0.72rem; font-weight:400; color:#6b7280; text-transform:none;">— メール本文には含まれません。PDFには反映されています（委員長が編集可）。/ Not included in the email body. Reflected in the PDF (EIC may edit).</span></p>
                   <div style="white-space:pre-wrap; background:#f0f7ff; padding:0.875rem; border-radius:6px; border:1px solid #bfdbfe; font-size:0.875rem; line-height:1.7; color:#1e293b;">${ms.managingEditorAuthorComment || ms.ManagingEditorAuthorComment || '(なし / none)'}</div>
                 </div>
                 <div style="${(ms.managingEditorFileUrl || ms.ManagingEditorFileUrl) ? 'margin-bottom:1rem;' : ''}">
@@ -543,13 +543,13 @@ function renderAuthorView(container) {
               ${!ms.eicFinalDecision ? `
               <div style="padding:0.85rem 1rem; background:#fef9c3; border:1px solid #facc15; border-radius:8px; margin-bottom:1.25rem; font-size:0.875rem; line-height:1.75; color:#713f12;">
                 ⚠️ <strong>送信内容について / What will be sent:</strong><br>
-                <strong>【ルートa】投稿者に差し戻す場合：</strong>「著者へのコメント」と「添付ファイル」が<strong>著者</strong>に送信されます。「印刷担当者へのコメント」は使用されません。<br>
-                <strong>【ルートb】印刷担当者に送る場合：</strong>「著者へのコメント」が<strong>著者</strong>に、「印刷担当者へのコメント」と「添付ファイル」が<strong>印刷担当者</strong>に送信されます。<br>
-                いずれのルートでも、査読者・担当編集者・編集幹事のコメントは自動転送されません。含める場合は取りまとめてコメントまたはファイルとして添付してください。<br>
+                著者へのメール本文には<strong>委員長が入力したコメントのみ</strong>記載されます。編集幹事のコメントはメール本文には含まれませんが、<strong>PDFには反映されています</strong>（共有フォルダ経由で著者に届きます）。<br>
+                <strong>【ルートa】投稿者に差し戻す場合：</strong>「著者へのコメント（委員長）」と「共有フォルダ（PDF含む）」が<strong>著者</strong>に送信されます。<br>
+                <strong>【ルートb】印刷担当者に送る場合：</strong>「著者へのコメント（委員長）」が<strong>著者</strong>に、「印刷担当者へのコメント」と「添付ファイル」が<strong>印刷担当者</strong>に送信されます。<br>
                 <span style="color:#92400e;">
-                  <strong>[Route a] Return to Author:</strong> The <strong>author comment</strong> and <strong>attached files</strong> are sent to the <strong>author</strong>. The production editor comment field is not used.<br>
-                  <strong>[Route b] Send to Production:</strong> The <strong>author comment</strong> is sent to the <strong>author</strong>; the <strong>production editor comment</strong> and <strong>attached files</strong> are sent to the <strong>production editor</strong>.<br>
-                  In either route, comments from reviewers, the handling editor, and the managing editor are <em>not</em> forwarded automatically.
+                  The author email body contains only the <strong>EIC's comment</strong>. The managing editor's comment is <em>not</em> included in the email body, but is <strong>reflected in the PDF</strong> (delivered to the author via the shared folder).<br>
+                  <strong>[Route a] Return to Author:</strong> The <strong>EIC's author comment</strong> and <strong>shared folder (incl. PDF)</strong> are sent to the <strong>author</strong>.<br>
+                  <strong>[Route b] Send to Production:</strong> The <strong>EIC's author comment</strong> goes to the <strong>author</strong>; the <strong>production editor comment</strong> and <strong>attached files</strong> go to the <strong>production editor</strong>.
                 </span>
               </div>
               <div class="form-group">

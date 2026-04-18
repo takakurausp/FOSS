@@ -459,10 +459,9 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId) {
   };
   var templateText = replaceDecisionPlaceholders(decisionTemplates.mailText, replacements);
 
-  // 編集幹事・委員長コメント
+  // 著者へは編集委員長のコメントのみ送信（編集幹事コメントは委員長が取りまとめて含める運用）
   var commentsHtml =
-    (meAuthorComment ? '<p><strong>編集幹事よりのコメント / Comments from Managing Editor:</strong><br>' + escHtml(meAuthorComment).replace(/\n/g, '<br>') + '</p>' : '') +
-    (eicComment      ? '<p><strong>編集委員長よりのコメント / Comments from Editor-in-Chief:</strong><br>' + escHtml(eicComment).replace(/\n/g, '<br>') + '</p>' : '');
+    (eicComment ? '<p><strong>編集委員長よりのコメント / Comments from Editor-in-Chief:</strong><br>' + escHtml(eicComment).replace(/\n/g, '<br>') + '</p>' : '');
 
   // ファイルリンク（EICファイル・コメントPDFを 1 フォルダにまとめて送付）
   // 投稿原稿フォルダ・編集幹事ファイルはダッシュボードから参照
