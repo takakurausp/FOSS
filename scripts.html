@@ -234,18 +234,21 @@ function submitResponse() {
 /**
  * 原稿・査読資料パネルHTMLを生成
  */
-function buildReviewMaterialsPanel(submittedUrl, reviewMaterialsUrl) {
+function buildReviewMaterialsPanel(submittedUrl, reviewMaterialsUrl, receiptUrl) {
   let submittedLink = '';
   let materialsLink = '';
-  if (submittedUrl) submittedLink = `<a href="${submittedUrl}" target="_blank">【閲覧専用】投稿原稿フォルダ / Submitted Files Folder</a>`;
+  let receiptLink   = '';
+  if (submittedUrl)      submittedLink = `<a href="${submittedUrl}"      target="_blank">【閲覧専用】投稿原稿フォルダ / Submitted Files Folder</a>`;
   if (reviewMaterialsUrl) materialsLink = `<a href="${reviewMaterialsUrl}" target="_blank">【閲覧専用】審査票他・作業フォルダ / Review Materials Folder</a>`;
-  if (!submittedLink && !materialsLink) return '';
+  if (receiptUrl)         receiptLink   = `<a href="${receiptUrl}"         target="_blank">【閲覧専用】原稿受領票フォルダ / Submission Receipt Folder</a>`;
+  if (!submittedLink && !materialsLink && !receiptLink) return '';
   return `
     <div style="margin: 1.5rem 0; padding: 1rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
       <p style="margin:0 0 0.5rem;"><strong>原稿・査読資料の確認 / Review Materials:</strong></p>
       <ul style="margin-top: 0.5rem; line-height: 1.8;">
         ${submittedLink ? `<li>${submittedLink}</li>` : ''}
         ${materialsLink ? `<li>${materialsLink}</li>` : ''}
+        ${receiptLink   ? `<li>${receiptLink}</li>`   : ''}
       </ul>
     </div>`;
 }
@@ -379,7 +382,7 @@ function renderAuthorView(container) {
           ${buildProgressTimeline(ms.finalStatus === 'final_review' || (USER_ROLE === 'Editor-in-chief' && ms._editorScore && !ms.sentBackAt) ? 'final_review' : ms._progressStatus)}
           ${renderManuscriptHeader(ms)}
           ${renderManuscriptInfoTable(ms, { showAuthors: (USER_ROLE !== 'Author'), showSubmittedAt: true, showCorrespondingAuthor: true })}
-          ${buildReviewMaterialsPanel(ms.submittedFolderUrl || ms.folderUrl, (USER_ROLE === 'Editor-in-chief' || USER_ROLE === 'Managing-Editor') ? ms._reviewMaterialsFolderUrl : '')}
+          ${buildReviewMaterialsPanel(ms.submittedFolderUrl || ms.folderUrl, (USER_ROLE === 'Editor-in-chief' || USER_ROLE === 'Managing-Editor') ? ms._reviewMaterialsFolderUrl : '', (USER_ROLE === 'Editor-in-chief' || USER_ROLE === 'Managing-Editor') ? ms.receiptFolderUrl || '' : '')}
           ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
         </div>
 
@@ -1401,6 +1404,7 @@ function renderManagingEditorView(container) {
         ${buildProgressTimeline(ms._progressStatus)}
         ${renderManuscriptHeader(ms)}
         ${renderManuscriptInfoTable(ms, { showAuthors: true })}
+        ${buildReviewMaterialsPanel(ms.submittedFolderUrl || ms.folderUrl, ms._reviewMaterialsFolderUrl, ms.receiptFolderUrl || '')}
         ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
         ${(ms.LetterToEditor || ms.letterToEditor) ? `
           <div style="margin-top:1rem; padding:1rem; background:#fff7ed; border:1px solid #f97316; border-radius:8px;">
