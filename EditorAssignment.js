@@ -104,7 +104,8 @@ function sendEditorRequestEmail(ms, data, editorKey, settings) {
   const subject = `[${settings.Journal_Name}] 担当編集者ご就任のご依頼 / Invitation for Responsible Editor (${ms['MsVer']})`;
 
   const bodyHtml = `
-    <p>You have been invited to serve as the responsible editor for the following manuscript:</p>
+    <p>You have been invited to serve as the responsible editor for the following manuscript. Please respond to this invitation by clicking the button below.</p>
+    <p>以下の原稿について、担当編集者（Responsible Editor）への就任をお願いしたく存じます。内容をご確認の上、以下のボタンより受諾または辞退のご回答をお願いいたします。</p>
     <div style="background:#f1f5f9; padding:15px; border-radius:8px; margin:20px 0;">
       <p><strong>Message from Chief Editor:</strong><br>${escHtml(data.letterToEditor || '').replace(/\n/g, '<br>')}</p>
     </div>
@@ -115,9 +116,6 @@ function sendEditorRequestEmail(ms, data, editorKey, settings) {
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (JP)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${escHtml(ms['AbstractJP'] || 'N/A')}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (EN)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${escHtml(ms['AbstractEN'] || 'N/A')}</td></tr>
     </table>
-    <p>Please respond to this invitation by clicking the button below.</p>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>以下の原稿について、担当編集者（Responsible Editor）への就任をお願いしたく存じます。内容をご確認の上、以下のボタンより受諾または辞退のご回答をお願いいたします。</p>
   `;
 
   const html = renderRichEmail({

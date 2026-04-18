@@ -72,7 +72,8 @@ function sendReviewerMail(email, name, letterText, msData, settings, revKey, edi
   const paperTitle = escHtml((msData.TitleJP && msData.TitleEN) ? msData.TitleJP + ' / ' + msData.TitleEN : (msData.TitleJP || msData.TitleEN || ''));
 
   const bodyHtml = `
-    <p>You have been invited to review the following manuscript for <strong>${escHtml(settings.Journal_Name)}</strong>:</p>
+    <p>You have been invited to review the following manuscript for <strong>${escHtml(settings.Journal_Name)}</strong>. Please respond to this invitation by clicking the button below.</p>
+    <p>以下の原稿について、査読のお願いを申し上げます。内容をご確認の上、以下のボタンより受諾または辞退のご回答をお願いいたします。</p>
     <div style="background:#f1f5f9; padding:15px; border-radius:8px; margin:20px 0;">
       <p><strong>Message from Responsible Editor:</strong><br>${escHtml(letterText || '').replace(/\n/g, '<br>')}</p>
     </div>
@@ -84,9 +85,6 @@ function sendReviewerMail(email, name, letterText, msData, settings, revKey, edi
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (EN)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${escHtml(msData.AbstractEN || 'N/A')}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Deadline</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${escHtml(deadline)}</td></tr>
     </table>
-    <p>Please respond to this invitation by clicking the button below.</p>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>以下の原稿について、査読のお願いを申し上げます。内容をご確認の上、以下のボタンより受諾または辞退のご回答をお願いいたします。</p>
   `;
 
   const html = renderRichEmail({
@@ -124,7 +122,8 @@ function sendReviewerConfirmationToEditor(editorEmail, editorName, data, setting
     : null;
 
   const bodyHtml = `
-    <p>Thank you for sending us the peer reviewer candidate(s) for the following manuscript.</p>
+    <p>Thank you for sending us the peer reviewer candidate(s) for the following manuscript. Please use the button below to open your editor dashboard and check the invitation status.</p>
+    <p>査読者候補のご登録を承りました。各候補者へ査読依頼メールを送信しました。以下のボタンから担当編集者ダッシュボードを開き、招待状況をご確認いただけます。</p>
     <table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">Manuscript / 原稿</th>
           <td style="padding:8px; border-bottom:1px solid #eee;">${msData.MsVer || msData.MS_ID || ''}</td></tr>
@@ -136,10 +135,6 @@ function sendReviewerConfirmationToEditor(editorEmail, editorName, data, setting
           <td style="padding:8px; border-bottom:1px solid #eee;">${msData.CA_Name || ''}</td></tr>
       ${reviewerRows}
     </table>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">
-    <p>査読者候補のご登録を承りました。各候補者へ査読依頼メールを送信しました。</p>
-    <p>以下のボタンから担当編集者ダッシュボードを開き、招待状況をご確認いただけます。</p>
-    <p>Please use the button below to open your editor dashboard and check the invitation status.</p>
   `;
 
   const html = renderRichEmail({
@@ -255,10 +250,8 @@ function sendReviewerWelcomeEmail(reviewLog, ms, settings) {
     : '';
 
   const bodyHtml = `
-    <p>
-      Thank you for accepting the invitation to review the following manuscript.<br>
-      以下の原稿の査読依頼をお引き受けいただき、誠にありがとうございます。
-    </p>
+    <p>Thank you for accepting the invitation to review the following manuscript. Please open your reviewer dashboard via the button below and submit your review results by the deadline.</p>
+    <p>以下の原稿の査読依頼をお引き受けいただき、誠にありがとうございます。期限までに、下記ボタンから査読者専用ダッシュボードを開き、査読結果をご提出ください。</p>
     <table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">
       <tr>
         <th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:35%;">Manuscript / 原稿</th>
@@ -270,10 +263,6 @@ function sendReviewerWelcomeEmail(reviewLog, ms, settings) {
       </tr>` : ''}
       ${deadlineRow}
     </table>
-    <p>
-      Please open your reviewer dashboard via the button below and submit your review results by the deadline.<br>
-      期限までに、下記ボタンから査読者専用ダッシュボードを開き、査読結果をご提出ください。
-    </p>
   `;
 
   const html = renderRichEmail({

@@ -185,24 +185,18 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
   if (allDone) {
     subject = `[${settings.Journal_Name}] 全査読完了 / All Reviews Complete — ${msData.MsVer}`;
     bodyHtml = `
-      <p>All peer review results are now available for manuscript <strong>${msData.MsVer}</strong>.</p>
-      <p>Please refer to those results and recommend your decision to the Editor-in-Chief by clicking the button below.</p>
+      <p>All peer review results are now available for manuscript <strong>${msData.MsVer}</strong>. Please refer to those results and recommend your decision to the Editor-in-Chief by clicking the button below.</p>
+      <p>原稿 <strong>${msData.MsVer}</strong> の全ての査読結果が出そろいました。これらの結果を確認し、以下のボタンより編集委員長への推薦（判定案の作成）をお願いいたします。</p>
       ${msInfoTable}
-      <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">
-      <p>原稿 <strong>${msData.MsVer}</strong> の全ての査読結果が出そろいました。</p>
-      <p>これらの結果を確認し、以下のボタンより編集委員長への推薦（判定案の作成）をお願いいたします。</p>
     `;
     buttonUrl   = recommendationLink;
     buttonLabel = 'Send Recommendation / 推薦を送る';
   } else {
     subject = `[${settings.Journal_Name}] 査読結果提出 (${endedNum}/${totalNum}) / Review Submitted — ${msData.MsVer}`;
     bodyHtml = `
-      <p>A peer review result has been submitted for manuscript <strong>${msData.MsVer}</strong> by <strong>${msData.Rev_Name || 'a reviewer'}</strong>.</p>
-      <p>${pendingNames.length} reviewer(s) have not yet submitted their results. You will receive another notification when all reviews are complete.</p>
+      <p>A peer review result has been submitted for manuscript <strong>${msData.MsVer}</strong> by <strong>${msData.Rev_Name || 'a reviewer'}</strong>. ${pendingNames.length} reviewer(s) have not yet submitted their results. You will receive another notification when all reviews are complete.</p>
+      <p>原稿 <strong>${msData.MsVer}</strong> の査読結果が1件届きました（${endedNum}/${totalNum} 件完了）。残り ${pendingNames.length} 名の査読者からの結果待ちです。全員の査読が完了した際に改めてご連絡いたします。</p>
       ${msInfoTable}
-      <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">
-      <p>原稿 <strong>${msData.MsVer}</strong> の査読結果が1件届きました（${endedNum}/${totalNum} 件完了）。</p>
-      <p>残り ${pendingNames.length} 名の査読者からの結果待ちです。全員の査読が完了した際に改めてご連絡いたします。</p>
     `;
     buttonUrl   = recommendationLink;
     buttonLabel = 'Open Editor Menu / 担当編集メニューを開く';
@@ -229,7 +223,8 @@ function sendReviewerThankYou(email, name, msData, settings) {
   const paperTitle = (msData.TitleJP && msData.TitleEN) ? msData.TitleJP + ' / ' + msData.TitleEN : (msData.TitleJP || msData.TitleEN || '');
   
   const bodyHtml = `
-    <p>Thank you for sending us the peer review results for the following manuscript:</p>
+    <p>Thank you for sending us the peer review results for the following manuscript. We have successfully received your submission.</p>
+    <p>以下の原稿の査読結果をご送付いただき、誠にありがとうございます。査読結果、およびコメントを確かに受領いたしましたことをご報告申し上げます。</p>
     <table style="width:100%; font-size: 14px; border-collapse: collapse; margin: 20px 0;">
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee; width: 30%;">ID</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msVer}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MS_Type || ''}</td></tr>
@@ -237,10 +232,6 @@ function sendReviewerThankYou(email, name, msData, settings) {
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (JP)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${msData.AbstractJP || 'N/A'}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (EN)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${msData.AbstractEN || 'N/A'}</td></tr>
     </table>
-    <p>We would like to inform you that we have successfully received your submission.</p>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>以下の原稿の査読結果をご送付いただき、誠にありがとうございます。</p>
-    <p>査読結果、およびコメントを確かに受領いたしましたことをご報告申し上げます。</p>
   `;
 
   const html = renderRichEmail({

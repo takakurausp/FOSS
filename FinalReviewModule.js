@@ -362,8 +362,8 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportP
   var paperTitle = _buildPaperTitle(msData);
 
   var bodyHtml =
-    '<p>編集幹事より、受理原稿の最終確認レビューが送信されました。</p>' +
-    '<p>Managing editor has completed the initial review of the accepted manuscript.</p>' +
+    '<p>Managing editor has completed the initial review of the accepted manuscript. Please access the EIC dashboard below to take the final action.</p>' +
+    '<p>編集幹事より、受理原稿の最終確認レビューが送信されました。以下のボタンから委員長ダッシュボードにアクセスし、最終アクションをご実施ください。</p>' +
     '<table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">' +
       '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">原稿番号 / MS ID</th>' +
           '<td style="padding:8px; border-bottom:1px solid #eee;">' + escHtml(msData.MsVer || '') + '</td></tr>' +
@@ -373,9 +373,7 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportP
           '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(data.authorComment || '(なし / None)') + '</td></tr>' +
       '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">内部用コメント<br><span style="font-size:0.85em;font-weight:normal;">Internal Comment</span></th>' +
           '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(data.internalComment || '(なし / None)') + '</td></tr>' +
-    '</table>' +
-    '<p>以下のボタンから委員長ダッシュボードにアクセスし、最終アクションをご実施ください。</p>' +
-    '<p>Please access the EIC dashboard below to take the final action.</p>';
+    '</table>';
 
   var html = renderRichEmail({
     journalName: settings.Journal_Name,
@@ -530,8 +528,8 @@ function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings) 
     : '';
 
   var bodyHtml =
-    '<p>下記の原稿が受理されましたので、印刷・制作工程への移行をお願いいたします。</p>' +
     '<p>The manuscript listed below has been accepted. Please proceed with the production process at your earliest convenience.</p>' +
+    '<p>下記の原稿が受理されましたので、印刷・制作工程への移行をお願いいたします。</p>' +
     '<table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">' +
       '<tr style="background:#f1f5f9;"><th colspan="2" style="text-align:left; padding:10px 8px; border-bottom:2px solid #cbd5e1; color:#1e40af; font-size:13px;">原稿情報 / Manuscript Information</th></tr>' +
       '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:35%;">原稿番号 / Manuscript ID</th>' +
@@ -558,10 +556,7 @@ function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings) 
           '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(eicProductionComment) + '</td></tr>'
         : '') +
     '</table>' +
-    fileLinksHtml +
-    '<hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">' +
-    '<p>原稿受領票（PDF）を添付いたします。委員長のアップロードファイルは上記の Drive リンクよりご確認ください。</p>' +
-    '<p>Please find the manuscript receipt (PDF) attached. Files uploaded by the Editor-in-Chief are available via the Drive link above.</p>';
+    fileLinksHtml;
 
   var html = renderRichEmail({
     journalName: settings.Journal_Name,
@@ -757,8 +752,8 @@ function _notifyManagingEditorOfEicRoute(msData, route, eicAuthorComment, eicPro
   }
 
   var bodyHtml =
-    '<p>編集委員長が以下の原稿に対してアクションを取りました。</p>' +
     '<p>The Editor-in-Chief has taken action on the following manuscript.</p>' +
+    '<p>編集委員長が以下の原稿に対してアクションを取りました。</p>' +
     '<table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">' +
       '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">原稿番号 / MS ID</th>' +
           '<td style="padding:8px; border-bottom:1px solid #eee;">' + escHtml(msData.MsVer || '') + '</td></tr>' +

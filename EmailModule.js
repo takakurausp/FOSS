@@ -161,7 +161,8 @@ function sendEicNotification(ms, pdfBlob) {
     ? `[${settings.Journal_Name}] 修正版原稿受領のお知らせ / Revised Manuscript Received: ${ms.MsVer}`
     : `[${settings.Journal_Name}] 新規原稿受領のお知らせ / New Manuscript Received: ${ms.MsVer}`;
   const bodyHtml = `
-    <p>${isResubmission ? 'A revised manuscript (resubmission) has been received.' : 'A new manuscript has been submitted.'}</p>
+    <p>${isResubmission ? 'A revised manuscript (resubmission) has been received.' : 'A new manuscript has been submitted.'} Please review the submission details and assign a responsible editor.</p>
+    <p>${isResubmission ? '修正原稿（再投稿）を受領いたしました。' : '新規投稿がありました。'}内容を確認し、担当編集者の割り当てを行ってください。</p>
     <table style="width:100%; font-size: 14px; border-collapse: collapse; margin: 20px 0;">
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee; width: 30%;">ID</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${escHtml(ms.MsVer)}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${escHtml(ms.paperType)}</td></tr>
@@ -171,9 +172,6 @@ function sendEicNotification(ms, pdfBlob) {
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Abstract (EN)</th><td style="padding: 8px; border-bottom: 1px solid #eee; white-space: pre-wrap;">${escHtml(ms.abstractEn || 'N/A')}</td></tr>
     </table>
     ${versionHistoryHtml}
-    <p>Please review the submission details and assign a responsible editor.</p>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>${isResubmission ? '修正原稿（再投稿）を受領いたしました。' : '新規投稿がありました。'}内容を確認し、担当編集者の割り当てを行ってください。</p>
   `;
 
   const html = renderRichEmail({

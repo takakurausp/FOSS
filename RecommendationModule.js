@@ -379,8 +379,8 @@ function sendRecommendationToManagingEditor(msData, data, reportFiles, settings,
     : (msData.TitleJP || msData.TitleEN || '');
 
   const bodyHtml = `
-    <p>担当編集者 <strong>${msData.Editor_Name}</strong> より、以下の原稿の判定案（受理推薦）が提出されました。</p>
-    <p>Responsible editor <strong>${msData.Editor_Name}</strong> has submitted an acceptance recommendation for the following manuscript.</p>
+    <p>Responsible editor <strong>${msData.Editor_Name}</strong> has submitted an acceptance recommendation for the following manuscript. Please open the Managing Editor dashboard using the button below to complete your review.</p>
+    <p>担当編集者 <strong>${msData.Editor_Name}</strong> より、以下の原稿の判定案（受理推薦）が提出されました。以下のボタンより編集幹事ダッシュボードを開き、最終確認作業をお願いいたします。</p>
     <table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">原稿番号 / MS ID</th>
           <td style="padding:8px; border-bottom:1px solid #eee;">${msData.MsVer}</td></tr>
@@ -391,8 +391,6 @@ function sendRecommendationToManagingEditor(msData, data, reportFiles, settings,
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">責任著者 / Corresponding Author</th>
           <td style="padding:8px; border-bottom:1px solid #eee;">${msData.CA_Name || ''}</td></tr>
     </table>
-    <p>以下のボタンより編集幹事ダッシュボードを開き、最終確認作業をお願いいたします。</p>
-    <p>Please open the Managing Editor dashboard using the button below to complete your review.</p>
   `;
 
   const html = renderRichEmail({
@@ -439,7 +437,9 @@ function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
     </div>` : '';
 
   const bodyHtml = `
-    <p>Responsible editor <strong>${msData.Editor_Name}</strong> has sent a recommendation for the following manuscript:</p>
+    <p>Responsible editor <strong>${msData.Editor_Name}</strong> has sent a recommendation for the following manuscript. The peer review results and summary are attached. Please review these results and send the final decision to the authors by clicking the button below.</p>
+    <p>担当編集者 <strong>${msData.Editor_Name}</strong> 殿より、以下の原稿の判定案（推薦）が提出されました。添付の資料を確認し、著者への最終通知（判定）を行ってください。</p>
+    ${folderButtonHtml}
     <table style="width:100%; font-size: 14px; border-collapse: collapse; margin: 20px 0;">
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee; width: 30%;">ID</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MsVer}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MS_Type || ''}</td></tr>
@@ -447,12 +447,6 @@ function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Corresponding Author</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.CA_Name || ''}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Recommended Score</th><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight:bold;">${data.score || ''}</td></tr>
     </table>
-    <p>The peer review results and summary are attached to this email.</p>
-    <p>Please review these results and send the final decision to the authors by clicking the button below.</p>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>担当編集者 <strong>${msData.Editor_Name}</strong> 殿より、以下の原稿の判定案（推薦）が提出されました。</p>
-    ${folderButtonHtml}
-    <p>添付の資料を確認し、著者への最終通知（判定）を行ってください。</p>
   `;
 
   const html = renderRichEmail({
@@ -493,7 +487,8 @@ function sendRecommendationConfirmationToEditor(msData, data, submittedAt, setti
     : null;
 
   const bodyHtml = `
-    <p>Thank you for sending your recommendation for the following manuscript:</p>
+    <p>Thank you for sending your recommendation for the following manuscript. We have successfully received your submission and notified the Editor-in-Chief. You can verify the submission date and time by opening your editor dashboard using the button below.</p>
+    <p>原稿 <strong>${msData.MsVer}</strong> の判定案（推薦）をご送付いただき、ありがとうございます。内容を確かに受領し、編集委員長へ通知いたしました。以下のボタンから担当編集者ダッシュボードを開くと、推薦の送信日時をご確認いただけます。</p>
     <table style="width:100%; font-size: 14px; border-collapse: collapse; margin: 20px 0;">
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee; width: 30%;">ID</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MsVer}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MS_Type || ''}</td></tr>
@@ -502,23 +497,12 @@ function sendRecommendationConfirmationToEditor(msData, data, submittedAt, setti
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Recommended Score</th><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight:bold;">${data.score || ''}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Submitted at</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${submittedAt}</td></tr>
     </table>
-    <p>We have successfully received your submission and notified the Editor-in-Chief.</p>
     ${uploadedFiles.length > 0 ? `
-      <p><strong>Files you uploaded:</strong></p>
+      <p><strong>Files you uploaded / アップロードしたファイル:</strong></p>
       <ul style="margin:0 0 16px 20px; padding:0;">
         ${uploadedFiles.map(file => `<li style="margin-bottom:4px;">${file}</li>`).join('')}
       </ul>
     ` : ''}
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">
-    <p>原稿 <strong>${msData.MsVer}</strong> の判定案（推薦）をご送付いただき、ありがとうございます。内容を確かに受領し、編集委員長へ通知いたしました。</p>
-    ${uploadedFiles.length > 0 ? `
-      <p><strong>アップロードしたファイル:</strong></p>
-      <ul style="margin:0 0 16px 20px; padding:0;">
-        ${uploadedFiles.map(file => `<li style="margin-bottom:4px;">${file}</li>`).join('')}
-      </ul>
-    ` : ''}
-    <p>以下のボタンから担当編集者ダッシュボードを開くと、推薦の送信日時をご確認いただけます。</p>
-    <p>You can verify the submission date and time by opening your editor dashboard using the button below.</p>
   `;
 
   const html = renderRichEmail({
@@ -585,8 +569,8 @@ function sendResubmittedAcceptedNotificationToManagingEditor(msData, settings, m
     : (msData.titleJp || msData.titleEn || '');
 
   const bodyHtml = `
-    <p>受理内定済み（Provisional Accept）の原稿 <strong>${msData.MsVer}</strong> について、著者より修正版が再投稿されました。</p>
-    <p>A revised version of the provisionally accepted manuscript <strong>${msData.MsVer}</strong> has been resubmitted by the author.</p>
+    <p>A revised version of the provisionally accepted manuscript <strong>${msData.MsVer}</strong> has been resubmitted by the author. Since the peer review steps are already complete, this manuscript has been routed directly to the Managing Editor's final review flow. Please open the Managing Editor dashboard using the button below to review the files and forward them to the Editor-in-Chief.</p>
+    <p>受理内定済み（Provisional Accept）の原稿 <strong>${msData.MsVer}</strong> について、著者より修正版が再投稿されました。担当編集者による査読ステップは完了しているため、本原稿は直接編集幹事の最終確認フローへ回されました。以下のボタンより編集幹事ダッシュボードを開き、内容の確認と委員長への回送をお願いいたします。</p>
     <table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">原稿番号 / MS ID</th>
           <td style="padding:8px; border-bottom:1px solid #eee;">${msData.MsVer}</td></tr>
@@ -595,10 +579,6 @@ function sendResubmittedAcceptedNotificationToManagingEditor(msData, settings, m
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">責任著者 / Corresponding Author</th>
           <td style="padding:8px; border-bottom:1px solid #eee;">${msData.authorName || ''} (${msData.authorEmail || ''})</td></tr>
     </table>
-    <p>担当編集者による査読ステップは完了しているため、本原稿は直接編集幹事の最終確認フローへ回されました。</p>
-    <p>Since the peer review steps are already complete, this manuscript has been routed directly to the Managing Editor\'s final review flow.</p>
-    <p>以下のボタンより編集幹事ダッシュボードを開き、内容の確認と委員長への回送をお願いいたします。</p>
-    <p>Please open the Managing Editor dashboard using the button below to review the files and forward them to the Editor-in-Chief.</p>
   `;
 
   const html = renderRichEmail({

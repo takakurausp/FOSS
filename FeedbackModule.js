@@ -355,6 +355,7 @@ function sendFeedbackConfirmationToRequester(msData, settings) {
   const subject = `[${settings.Journal_Name}] 判定通知送信の確認 / Confirmation: Decision sent to author(s): ${msData.MsVer}`;
   const bodyHtml = `
     <p>This is a confirmation email that the decision for manuscript <strong>${msData.MsVer}</strong> has been sent to the author(s).</p>
+    <p>原稿 <strong>${msData.MsVer}</strong> に対する著者への判定通知が完了いたしました。</p>
     <table style="width:100%; font-size: 14px; border-collapse: collapse; margin: 20px 0;">
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee; width: 30%;">Manuscript / 原稿</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MsVer || ''}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type / 種別</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MS_Type || ''}</td></tr>
@@ -362,8 +363,6 @@ function sendFeedbackConfirmationToRequester(msData, settings) {
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Corresponding Author / 責任著者</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.CA_Name || ''}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Final Decision / 判定結果</th><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight:bold;">${msData.score || ''}</td></tr>
     </table>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>原稿 <strong>${msData.MsVer}</strong> に対する著者への判定通知が完了いたしました。</p>
   `;
 
   const html = renderRichEmail({
@@ -539,8 +538,8 @@ function _sendEicAcceptanceToManagingEditor(msData, data, decisionTemplates, set
     : '';
 
   const bodyHtml = `
-    <p>編集委員長（EIC）が以下の原稿に対して <strong>最終承認（受理・再投稿なし）</strong> の判定を選択したため、編集幹事ルートへ転送されました。</p>
-    <p>The Editor-in-Chief (EIC) has selected a <strong>final acceptance (no resubmission)</strong> decision for the manuscript below, and the process has been forwarded to the Managing Editor route.</p>
+    <p>The Editor-in-Chief (EIC) has selected a <strong>final acceptance (no resubmission)</strong> decision for the manuscript below, and the process has been forwarded to the Managing Editor route. Please open the Managing Editor dashboard using the button below.</p>
+    <p>編集委員長（EIC）が以下の原稿に対して <strong>最終承認（受理・再投稿なし）</strong> の判定を選択したため、編集幹事ルートへ転送されました。以下のボタンより編集幹事ダッシュボードを開き、確認作業をお願いいたします。</p>
 
     <table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">
       <tr>
@@ -567,17 +566,14 @@ function _sendEicAcceptanceToManagingEditor(msData, data, decisionTemplates, set
     <div style="margin-top:20px; padding:14px 16px; background:#fef3c7; border:1px solid #f59e0b; border-radius:8px;">
       <p style="margin:0 0 6px; font-weight:bold; color:#92400e; font-size:13px;">⚠️ 重要 / Important</p>
       <p style="margin:0; font-size:13.5px; color:#78350f; line-height:1.6;">
-        この時点では著者・印刷担当者にはまだ通知されていません。<br>
-        編集幹事ダッシュボードでご確認のうえ、送信手続きを完了してください。その後、編集委員長が最終的な送付操作（Route B: 印刷担当者へ）を行います。
-      </p>
-      <p style="margin:8px 0 0; font-size:13.5px; color:#78350f; line-height:1.6;">
         The author and production editor have NOT yet been notified at this stage.<br>
         Please review the manuscript via the Managing Editor dashboard. After your submission, the Editor-in-Chief will complete the final step (Route B: Send to Production Editor).
       </p>
+      <p style="margin:8px 0 0; font-size:13.5px; color:#78350f; line-height:1.6;">
+        この時点では著者・印刷担当者にはまだ通知されていません。<br>
+        編集幹事ダッシュボードでご確認のうえ、送信手続きを完了してください。その後、編集委員長が最終的な送付操作（Route B: 印刷担当者へ）を行います。
+      </p>
     </div>
-
-    <p style="margin-top:20px;">以下のボタンより編集幹事ダッシュボードを開き、確認作業をお願いいたします。</p>
-    <p>Please open the Managing Editor dashboard using the button below.</p>
   `;
 
   const html = renderRichEmail({

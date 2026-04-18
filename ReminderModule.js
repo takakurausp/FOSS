@@ -334,16 +334,14 @@ function sendReviewerSubmissionReminderEmail(
     : '';
 
   const bodyHtml = `
-    <p>${isFinal ? '<strong style="color:#dc2626;">[Final Reminder]</strong> ' : ''}This is a reminder that your review for manuscript <strong>${msVer}</strong> has not yet been submitted.</p>
+    <p>${isFinal ? '<strong style="color:#dc2626;">[Final Reminder]</strong> ' : ''}This is a reminder that your review for manuscript <strong>${msVer}</strong> has not yet been submitted. Please submit your review results via the button below.</p>
+    <p>${isFinal ? '<strong>【最終リマインド】</strong>' : ''}原稿 <strong>${msVer}</strong> の査読結果がまだ提出されておりません。お手数ですが、以下のボタンより査読結果をご提出ください。</p>
     <table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">Manuscript / 原稿</th>
           <td style="padding:8px; border-bottom:1px solid #eee;">${msVer}</td></tr>
       ${deadlineRow}
       ${folderRow}
     </table>
-    <p>Please submit your review results via the button below.</p>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">
-    <p>${isFinal ? '<strong>【最終リマインド】</strong>' : ''}原稿 <strong>${msVer}</strong> の査読結果がまだ提出されておりません。お手数ですが、以下のボタンより査読結果をご提出ください。</p>
   `;
 
   const html = renderRichEmail({
