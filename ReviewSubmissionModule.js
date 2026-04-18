@@ -112,16 +112,17 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
   const rcvAtCol   = colIdx('Received_At');
   const revOkCol   = colIdx('revOk');
   const revNameCol = colIdx('Rev_Name');
+  const scoreCol   = colIdx('Score');
 
   // totalNum = 辞退(revOk==='ng')・取消済(revOk==='cancelled')を除いた査読者数
   // endedNum = 承諾済み(revOk==='ok')かつ査読結果提出済み(Received_At が空でない)の人数
   // ※ダッシュボードの _allReviewsIn と同じ基準で判定する
   let totalNum = 0;
   let endedNum = 0;
-  const submittedNames = [];
-  const pendingNames   = [];
-  const declinedNames  = [];
-  const cancelledNames = [];
+  const submittedEntries = []; // { name, score } — 提出済み査読者の名前とスコア
+  const pendingNames     = [];
+  const declinedNames    = [];
+  const cancelledNames   = [];
 
   for (let i = 1; i < rows.length; i++) {
     const rowMsVer   = String(rows[i][msVerCol]   || '').trim();
@@ -129,6 +130,7 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
     const rowRevOk   = String(rows[i][revOkCol]   || '').trim();
     const rowRcvAt   = String(rows[i][rcvAtCol]   || '').trim();
     const rowName    = String(rows[i][revNameCol] || '').trim();
+    const rowScore   = scoreCol !== -1 ? String(rows[i][scoreCol] || '').trim() : '';
 
     if (rowMsVer   !== String(msData.MsVer).trim())        continue;
     if (rowEdEmail !== String(msData.Editor_Email).trim()) continue;
@@ -139,7 +141,7 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
     totalNum++;
     if (rowRevOk === 'ok' && rowRcvAt !== '') {
       endedNum++;
-      submittedNames.push(rowName);
+      submittedEntries.push({ name: rowName, score: rowScore });
     } else {
       pendingNames.push(rowName); // 未回答 または 受諾済み未提出
     }
@@ -165,9 +167,9 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
           <td style="padding:8px; border-bottom:1px solid #eee;">${msData.CA_Name || ''}</td></tr>
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">Review Progress</th>
           <td style="padding:8px; border-bottom:1px solid #eee;"><strong>${endedNum} / ${totalNum}</strong> submitted</td></tr>
-      ${submittedNames.length > 0 ? `
+      ${submittedEntries.length > 0 ? `
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">Submitted / 提出済</th>
-          <td style="padding:8px; border-bottom:1px solid #eee; color:#059669;">${submittedNames.join(', ')}</td></tr>` : ''}
+          <td style="padding:8px; border-bottom:1px solid #eee; color:#059669;">${submittedEntries.map(e => e.score ? `${e.name} (${e.score})` : e.name).join(', ')}</td></tr>` : ''}
       ${pendingNames.length > 0 ? `
       <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">Pending / 未提出</th>
           <td style="padding:8px; border-bottom:1px solid #eee; color:#d97706;">${pendingNames.join(', ')}</td></tr>` : ''}
@@ -194,8 +196,8 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
   } else {
     subject = `[${settings.Journal_Name}] 査読結果提出 (${endedNum}/${totalNum}) / Review Submitted — ${msData.MsVer}`;
     bodyHtml = `
-      <p>A peer review result has been submitted for manuscript <strong>${msData.MsVer}</strong> by <strong>${msData.Rev_Name || 'a reviewer'}</strong>. ${pendingNames.length} reviewer(s) have not yet submitted their results. You will receive another notification when all reviews are complete.</p>
-      <p>原稿 <strong>${msData.MsVer}</strong> の査読結果が1件届きました（${endedNum}/${totalNum} 件完了）。残り ${pendingNames.length} 名の査読者からの結果待ちです。全員の査読が完了した際に改めてご連絡いたします。</p>
+      <p>A peer review result has been submitted for manuscript <strong>${msData.MsVer}</strong> by <strong>${msData.Rev_Name || 'a reviewer'}</strong>${data.score ? ` (${data.score})` : ''}. ${pendingNames.length} reviewer(s) have not yet submitted their results. You will receive another notification when all reviews are complete.</p>
+      <p>原稿 <strong>${msData.MsVer}</strong> の査読結果が1件届きました（${endedNum}/${totalNum} 件完了）。今回の提出者: <strong>${msData.Rev_Name || '査読者'}</strong>${data.score ? `（${data.score}）` : ''}。残り ${pendingNames.length} 名の査読者からの結果待ちです。全員の査読が完了した際に改めてご連絡いたします。</p>
       ${msInfoTable}
     `;
     buttonUrl   = recommendationLink;

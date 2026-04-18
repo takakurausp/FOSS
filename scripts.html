@@ -2278,7 +2278,9 @@ function renderEicOverview(container) {
     eic_stopped:      { label: '審査停止',       color: '#9f1239', bg: '#ffe4e6' }
   };
 
-  var baseUrl = window.location.href.split('?')[0];
+  var baseUrl = (typeof WEB_APP_URL !== 'undefined' && WEB_APP_URL)
+    ? WEB_APP_URL
+    : window.location.href.split('?')[0];
 
   var rows = msList.map(function(ms) {
     var st = statusLabels[ms._progressStatus] || { label: ms._progressStatus || '-', color: '#374151', bg: '#f3f4f6' };

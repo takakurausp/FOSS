@@ -46,6 +46,7 @@ function doGet(e) {
   template.showResponseForm = 'false';
   template.initialMsData = 'null';
   try { template.initialSettings = JSON.stringify(settings).replace(/<\//g, '<\\/'); } catch(e) { template.initialSettings = '{}'; }
+  template.webAppUrl = ScriptApp.getService().getUrl();
 
   // テストモード判定（デバッグ情報付き）
   console.log('Test parameter value:', testParam, 'type:', typeof testParam);

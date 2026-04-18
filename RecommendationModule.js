@@ -417,29 +417,35 @@ function sendRecommendationToManagingEditor(msData, data, reportFiles, settings,
  * 委員長へ通知（条件B: 非受理スコアの場合の既存フロー）
  */
 function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
-  const uploadedFiles = reportFiles.uploadedFiles || [];
-  const folderUrl     = reportFiles.attachmentsFolderUrl || '';
   const webAppUrl = ScriptApp.getService().getUrl();
   const decisionLink = webAppUrl + '?eicKey=' + msData.eicKey;
 
   const paperTitle = (msData.TitleJP && msData.TitleEN) ? msData.TitleJP + ' / ' + msData.TitleEN : (msData.TitleJP || msData.TitleEN || '');
 
-  const folderButtonHtml = (uploadedFiles.length > 0 && folderUrl) ? `
-    <div style="margin:16px 0;">
-      <a href="${folderUrl}" target="_blank"
-         style="display:inline-block; background:#1d4ed8; color:#ffffff; text-decoration:none;
-                padding:10px 20px; border-radius:6px; font-size:14px; font-weight:600;">
-        📁 担当編集者の添付ファイルを開く / Open Editor's Uploaded Files
-      </a>
-      <p style="margin:6px 0 0; font-size:12px; color:#6b7280;">
-        添付ファイル数 / Number of files: ${uploadedFiles.length}件
-      </p>
+  // オープンコメント
+  const openCommentsHtml = data.openComments ? `
+    <div style="margin:16px 0; padding:14px 16px; background:#f0f7ff; border-left:4px solid #3b82f6; border-radius:6px;">
+      <p style="margin:0 0 6px; font-size:12px; font-weight:700; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.04em;">オープンコメント / Open Comments</p>
+      <div style="white-space:pre-wrap; font-size:14px; color:#1e293b; line-height:1.7;">${data.openComments}</div>
     </div>` : '';
+
+  // コンフィデンシャルコメント
+  const confidentialCommentsHtml = data.confidentialComments ? `
+    <div style="margin:16px 0; padding:14px 16px; background:#fffbeb; border-left:4px solid #f59e0b; border-radius:6px;">
+      <p style="margin:0 0 6px; font-size:12px; font-weight:700; color:#92400e; text-transform:uppercase; letter-spacing:0.04em;">🔒 コンフィデンシャルコメント / Confidential Comments</p>
+      <div style="white-space:pre-wrap; font-size:14px; color:#1e293b; line-height:1.7;">${data.confidentialComments}</div>
+    </div>` : '';
+
+  // ダッシュボード案内
+  const dashboardNoteHtml = `
+    <div style="margin:20px 0; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; color:#475569; line-height:1.7;">
+      📋 査読報告書（PDF・Word）および担当編集者の添付ファイルの詳細は、下のボタンから編集委員長ダッシュボードにアクセスしてご確認ください。<br>
+      <span style="color:#64748b;">For the review report (PDF/Word) and editor's attached files, please access the Editor-in-Chief dashboard using the button below.</span>
+    </div>`;
 
   const bodyHtml = `
     <p>Responsible editor <strong>${msData.Editor_Name}</strong> has sent a recommendation for the following manuscript. The peer review results and summary are attached. Please review these results and send the final decision to the authors by clicking the button below.</p>
     <p>担当編集者 <strong>${msData.Editor_Name}</strong> 殿より、以下の原稿の判定案（推薦）が提出されました。添付の資料を確認し、著者への最終通知（判定）を行ってください。</p>
-    ${folderButtonHtml}
     <table style="width:100%; font-size: 14px; border-collapse: collapse; margin: 20px 0;">
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee; width: 30%;">ID</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MsVer}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MS_Type || ''}</td></tr>
@@ -447,6 +453,9 @@ function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Corresponding Author</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.CA_Name || ''}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Recommended Score</th><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight:bold;">${data.score || ''}</td></tr>
     </table>
+    ${openCommentsHtml}
+    ${confidentialCommentsHtml}
+    ${dashboardNoteHtml}
   `;
 
   const html = renderRichEmail({
