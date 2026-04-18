@@ -40,7 +40,7 @@ function apiSubmitRecommendation(data) {
   // 4. 通常ルート: 担当編集者の推薦は必ず EIC に送る。
   //    isAccepted スコアの場合でも、EIC 側で再判定後に apiSubmitFeedback から
   //    編集幹事ルートへ転送される（FeedbackModule._sendEicAcceptanceToManagingEditor）。
-  sendRecommendationToChiefEditor(msData, data, reportFiles, settings);
+  sendRecommendationToChiefEditor(msData, data, settings);
 
   writeLog(`Recommendation Submitted: ${msVer} by ${msData.Editor_Name} - Score: ${data.score} → EIC`);
 
@@ -349,7 +349,7 @@ function getFilteredReviewLog(ssId, msVer) {
 /**
  * 委員長へ通知（通常ルート: 担当編集者の推薦は必ず EIC に送られる）
  */
-function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
+function sendRecommendationToChiefEditor(msData, data, settings) {
   const webAppUrl = ScriptApp.getService().getUrl();
   const decisionLink = webAppUrl + '?eicKey=' + msData.eicKey;
 
@@ -377,8 +377,8 @@ function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
     </div>`;
 
   const bodyHtml = `
-    <p>Responsible editor <strong>${msData.Editor_Name}</strong> has sent a recommendation for the following manuscript. The peer review results and summary are attached. Please review these results and send the final decision to the authors by clicking the button below.</p>
-    <p>担当編集者 <strong>${msData.Editor_Name}</strong> 殿より、以下の原稿の判定案（推薦）が提出されました。添付の資料を確認し、著者への最終通知（判定）を行ってください。</p>
+    <p>Responsible editor <strong>${msData.Editor_Name}</strong> has sent a recommendation for the following manuscript. Please review the details on the Editor-in-Chief dashboard and send the final decision to the authors by clicking the button below.</p>
+    <p>担当編集者 <strong>${msData.Editor_Name}</strong> 殿より、以下の原稿の判定案（推薦）が提出されました。編集委員長ダッシュボードより詳細を確認の上、著者への最終通知（判定）を行ってください。</p>
     <table style="width:100%; font-size: 14px; border-collapse: collapse; margin: 20px 0;">
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee; width: 30%;">ID</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MsVer}</td></tr>
       <tr><th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Type</th><td style="padding: 8px; border-bottom: 1px solid #eee;">${msData.MS_Type || ''}</td></tr>
@@ -408,8 +408,7 @@ function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
   sendEmailSafe({
     to: settings.chiefEditorEmail,
     subject: `[${settings.Journal_Name}] 推薦レポート受領 / Recommendation Received: ${msData.MsVer}`,
-    htmlBody: html,
-    attachments: [reportFiles.pdf.getAs(MimeType.PDF), reportFiles.word.getBlob()]
+    htmlBody: html
   }, 'Recommendation to EIC: ' + msData.MsVer);
 }
 

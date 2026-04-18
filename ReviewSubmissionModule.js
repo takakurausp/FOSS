@@ -190,6 +190,10 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
       <p>All peer review results are now available for manuscript <strong>${msData.MsVer}</strong>. Please refer to those results and recommend your decision to the Editor-in-Chief by clicking the button below.</p>
       <p>原稿 <strong>${msData.MsVer}</strong> の全ての査読結果が出そろいました。これらの結果を確認し、以下のボタンより編集委員長への推薦（判定案の作成）をお願いいたします。</p>
       ${msInfoTable}
+      <div style="margin:20px 0; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; color:#475569; line-height:1.7;">
+        📋 査読コメントおよび査読者の添付ファイルの詳細は、下のボタンから担当編集者ダッシュボードにアクセスしてご確認ください。<br>
+        <span style="color:#64748b;">For review comments and reviewer's attached files, please access the Editor dashboard using the button below.</span>
+      </div>
     `;
     buttonUrl   = recommendationLink;
     buttonLabel = 'Send Recommendation / 推薦を送る';
@@ -199,6 +203,10 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
       <p>A peer review result has been submitted for manuscript <strong>${msData.MsVer}</strong> by <strong>${msData.Rev_Name || 'a reviewer'}</strong>${data.score ? ` (${data.score})` : ''}. ${pendingNames.length} reviewer(s) have not yet submitted their results. You will receive another notification when all reviews are complete.</p>
       <p>原稿 <strong>${msData.MsVer}</strong> の査読結果が1件届きました（${endedNum}/${totalNum} 件完了）。今回の提出者: <strong>${msData.Rev_Name || '査読者'}</strong>${data.score ? `（${data.score}）` : ''}。残り ${pendingNames.length} 名の査読者からの結果待ちです。全員の査読が完了した際に改めてご連絡いたします。</p>
       ${msInfoTable}
+      <div style="margin:20px 0; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; color:#475569; line-height:1.7;">
+        📋 提出されたコメントおよびファイルについては、下のボタンから担当編集者ダッシュボードにアクセスしてご確認ください。<br>
+        <span style="color:#64748b;">For submitted comments and files, please access the Editor dashboard using the button below.</span>
+      </div>
     `;
     buttonUrl   = recommendationLink;
     buttonLabel = 'Open Editor Menu / 担当編集メニューを開く';
