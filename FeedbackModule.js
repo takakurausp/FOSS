@@ -24,17 +24,24 @@ function apiSubmitFeedback(data) {
     return _redirectFeedbackToManagingEditorRoute(ssId, msData, data, decisionTemplates, settings);
   }
 
-  // 2. コメントPDFの生成・Drive保存（DB更新・メール送信より先に完了させる）
+  // 2. 判定用フォルダを先に作成し、コメントPDF・EICファイルをまとめて格納する
+  //    著者には 1 つのフォルダリンクのみ送付することで混乱を防ぐ
+  const decisionFolder = getAuthorDecisionFolder(msData, settings);
+
+  // 既存ファイルをクリア（再審査・差し替えに対応）
+  const existingFiles = decisionFolder.getFiles();
+  while (existingFiles.hasNext()) {
+    existingFiles.next().setTrashed(true);
+  }
+
+  // 3. コメントPDFを decisionFolder へ保存
   let commentPdfUrl = '';
   if (data.commentDocId) {
     try {
-      const workingFolder = driveFolderCache.getOrCreateFolder(
-        getManuscriptVerFolder(msData, settings), 'working'
-      );
       const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
       const nowStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
 
-      // ① 原本の先頭にヘッダーを挿入して保存（PDF化後はそのまま維持）
+      // ① 原本の先頭にヘッダーを挿入
       try {
         const commentDoc = DocumentApp.openById(data.commentDocId);
         insertCommentDocHeader(commentDoc.getBody(), journalName, data.score || '', nowStr);
@@ -47,8 +54,8 @@ function apiSubmitFeedback(data) {
       const pdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
       pdfBlob.setName('Open-Comments-' + msVer + '.pdf');
 
-      // ③ PDF を Working フォルダに保存して共有リンクを発行
-      const savedPdf = workingFolder.createFile(pdfBlob);
+      // ③ PDF を decisionFolder に保存（working フォルダではなく著者向けフォルダへ統合）
+      const savedPdf = decisionFolder.createFile(pdfBlob);
       savedPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       commentPdfUrl = savedPdf.getUrl();
       if (data.commentEditorKey) {
@@ -60,23 +67,17 @@ function apiSubmitFeedback(data) {
     }
   }
 
-  // 3. 判定用フォルダの作成と共有 — 著者専用の隔離フォルダを作成する
-  const decisionFolder = getAuthorDecisionFolder(msData, settings);
-
-  // 重要：フォルダが以前のファイルを含んでいる可能性があるため、今回アップロードする前に中身を掃除するか
-  // あるいは今回アップロードするものだけを表示するように制御します。
-  // ここでは著者向けに「今回アップロードしたファイルのみ」を保証するため、既存ファイルを一旦削除します（あれば）
-  const existingFiles = decisionFolder.getFiles();
-  while (existingFiles.hasNext()) {
-    existingFiles.next().setTrashed(true);
-  }
-
-  let resultFolderUrl = 'nofile';
+  // 4. EIC 添付ファイルを decisionFolder へ保存
   if (data.files && data.files.length > 0) {
     data.files.forEach(file => {
       const blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
       decisionFolder.createFile(blob);
     });
+  }
+
+  // フォルダに何か入っていれば共有して URL を取得
+  let resultFolderUrl = 'nofile';
+  if (commentPdfUrl || (data.files && data.files.length > 0)) {
     decisionFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     resultFolderUrl = decisionFolder.getUrl();
   }
@@ -94,7 +95,7 @@ function apiSubmitFeedback(data) {
   msData.score = data.score;
   
   // 5. 著者への通知メール送信
-  sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates, commentPdfUrl);
+  sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates);
   
   // 6. 委員長（および担当編集者）への確認通知
   sendFeedbackConfirmationToRequester(msData, settings);
@@ -133,7 +134,7 @@ function updateManuscriptCell(ssId, msKey, updates) {
 /**
  * 著者への判定通知
  */
-function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates, commentPdfUrl) {
+function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates) {
   if (!decisionTemplates) decisionTemplates = getDecisionTemplates(ssId, data.score);
   const resubmissionUrl = ScriptApp.getService().getUrl() + '?key=' + msData.key; // 著者がアクセスすると状態により再投稿画面が出る想定
 
@@ -170,27 +171,14 @@ function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, dec
     `;
   }
   
-  // 【デザイン改修】 判定資料フォルダへのリンクのセクション (カード風ボタン)
+  // 判定資料フォルダへのリンク（コメントPDF・EIC添付ファイルをまとめた 1 フォルダ）
   if (resultFolderUrl !== 'nofile') {
     mainText += `
       <div style="margin-top: 20px; padding: 20px; background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; text-align: center;">
-        <p style="margin: 0 0 12px 0; font-weight: bold; color: #0369a1; font-size: 15px;">📁 判定資料の確認 / Attached decision materials</p>
-        <p style="margin: 0 0 15px 0; font-size: 13.5px; color: #0c4a6e; line-height: 1.5;">判定の根拠となる資料フォルダへアクセスしてください。<br>Access the shared folder for further details of the decision.</p>
+        <p style="margin: 0 0 12px 0; font-weight: bold; color: #0369a1; font-size: 15px;">📁 判定資料・コメントPDF / Decision Materials &amp; Comments PDF</p>
+        <p style="margin: 0 0 15px 0; font-size: 13.5px; color: #0c4a6e; line-height: 1.5;">編集委員長からの添付ファイル・オープンコメントPDFをご確認ください。<br>Please find the EIC's attached files and open-comments PDF in the shared folder below.</p>
         <a href="${resultFolderUrl}" style="display: inline-block; padding: 10px 24px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14.5px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
-          閲覧用フォルダを開く / Open Decision Folder
-        </a>
-      </div>
-    `;
-  }
-
-  // オープンコメントPDF Driveリンクのセクション
-  if (commentPdfUrl) {
-    mainText += `
-      <div style="margin-top: 16px; padding: 20px; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; text-align: center;">
-        <p style="margin: 0 0 12px 0; font-weight: bold; color: #15803d; font-size: 15px;">📄 オープンコメント / Open Comments</p>
-        <p style="margin: 0 0 15px 0; font-size: 13.5px; color: #14532d; line-height: 1.5;">査読者・編集者のオープンコメントをご確認ください。<br>Please review the open comments from reviewers and editors.</p>
-        <a href="${commentPdfUrl}" style="display: inline-block; padding: 10px 24px; background-color: #059669; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14.5px; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2);">
-          コメントPDFを開く / Open Comments PDF
+          閲覧用フォルダを開く / Open Shared Folder
         </a>
       </div>
     `;

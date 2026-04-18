@@ -76,21 +76,27 @@ function apiEicFinalAction(data) {
   const msData = getManuscriptData('eic', data.eicKey);
   if (!msData) throw new Error('原稿が見つかりません。/ Manuscript not found.');
 
-  // 委員長添付ファイルを Drive に保存
-  let eicFileUrl = '';
-  if (data.files && data.files.length > 0) {
-    const verFolder = getManuscriptVerFolder(msData, settings);
-    const eicFolder = driveFolderCache.getOrCreateFolder(verFolder, 'eic-final');
+  // eic-final フォルダを作成し、EIC添付ファイルをアップロード（全ルート共通）
+  const verFolder = getManuscriptVerFolder(msData, settings);
+  const eicFolder = driveFolderCache.getOrCreateFolder(verFolder, 'eic-final');
+  const hasFiles = data.files && data.files.length > 0;
+
+  if (hasFiles) {
     data.files.forEach(function(file) {
       const decoded = Utilities.base64Decode(file.content);
       eicFolder.createFile(Utilities.newBlob(decoded, file.mimeType, file.name));
     });
-    eicFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    eicFileUrl = eicFolder.getUrl();
   }
 
-  // 委員長コメント・ファイル・判定名を Manuscripts に保存
-  // eicFinalComment = 著者向けコメント, eicProductionComment = 印刷担当者向けコメント
+  // ルートB・C 用: ファイルがあれば今の時点でフォルダURLを確定する
+  // ルートA はコメントPDF保存後に上書きする
+  var eicFileUrl = hasFiles
+    ? (eicFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW),
+       eicFolder.getUrl())
+    : '';
+
+  // 委員長コメント・ファイルURL・判定名を Manuscripts に保存（全ルート共通）
+  // ルートA はコメントPDF保存後に eicFinalFileUrl だけ再更新する
   updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
     'eicFinalComment':      data.eicAuthorComment     || '',
     'eicProductionComment': data.eicProductionComment || '',
@@ -101,7 +107,7 @@ function apiEicFinalAction(data) {
   var route = data.route;
 
   if (route === 'a') {
-    // ルートa: 投稿者に差し戻す — sentBackAt / score / accepted を記録して著者が再投稿できるようにする
+    // ルートa: 投稿者に差し戻す — sentBackAt / score / accepted を記録
     var dtRouteA = getDecisionTemplates(ssId, data.decision || '');
     var nowRouteA = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
     updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
@@ -109,18 +115,15 @@ function apiEicFinalAction(data) {
       'score':      data.decision || '',
       'accepted':   dtRouteA.isAccepted ? 'yes' : 'no'
     });
-    // コメントPDFをDriveに保存してリンクを取得
-    var commentPdfUrlA = '';
+
+    // コメントPDFを eic-final フォルダへ保存（著者向けフォルダに統合）
     if (data.commentDocId) {
       try {
-        var commentWorkingFolder = driveFolderCache.getOrCreateFolder(
-          getManuscriptVerFolder(msData, settings), 'working'
-        );
         var journalNameA = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
         var nowStrA = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
         var msVerA = msData.MsVer || '';
 
-        // ① 原本の先頭にヘッダーを挿入して保存
+        // ① 原本の先頭にヘッダーを挿入
         try {
           var commentDocA = DocumentApp.openById(data.commentDocId);
           insertCommentDocHeader(commentDocA.getBody(), journalNameA, data.decision || '', nowStrA);
@@ -133,19 +136,26 @@ function apiEicFinalAction(data) {
         var commentPdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
         commentPdfBlob.setName('Open-Comments-' + msVerA + '.pdf');
 
-        // ③ PDF を Working フォルダに保存して共有リンクを発行
-        var savedCommentPdf = commentWorkingFolder.createFile(commentPdfBlob);
+        // ③ PDF を eic-final フォルダに保存して共有リンクを発行
+        var savedCommentPdf = eicFolder.createFile(commentPdfBlob);
         savedCommentPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        commentPdfUrlA = savedCommentPdf.getUrl();
+        var commentPdfUrlA = savedCommentPdf.getUrl();
         if (data.commentEditorKey) {
           updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
             { 'reportCommentPdfUrl': commentPdfUrlA });
         }
+
+        // PDFが追加されたのでフォルダURLを確定して Manuscripts を更新
+        eicFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        eicFileUrl = eicFolder.getUrl();
+        updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, { 'eicFinalFileUrl': eicFileUrl });
+
       } catch(e) {
         Logger.log('Comment PDF export failed (route a): ' + e.message);
       }
     }
-    _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, commentPdfUrlA);
+
+    _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId);
     _notifyManagingEditorOfEicRoute(msData, 'a', data.eicAuthorComment, data.eicProductionComment, data.decision || '', settings, ssId);
 
   } else if (route === 'b') {
@@ -160,9 +170,7 @@ function apiEicFinalAction(data) {
 
   } else if (route === 'c') {
     // ルートc: 担当編集者に差し戻し（再判定依頼）
-    // Editor_log の Score・Received_At をクリアして再判定可能な状態に戻す
     _resetEditorScoreForMsVer(ssId, msData.MsVer || '');
-    // Manuscripts の final_review 関連フィールドをリセット
     updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
       'finalStatus':                   '',
       'managingEditorKey':             '',
@@ -391,9 +399,9 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportP
 /**
  * ルートa: 著者への通知メール
  * DecisionMailテンプレート＋編集幹事・委員長コメントを合わせて送付
- * 委員長の添付ファイルはメールに直接添付する
+ * EIC添付ファイル・コメントPDFは eic-final フォルダの 1 リンクにまとめて送付する
  */
-function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, commentPdfUrl) {
+function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId) {
   var webAppUrl = ScriptApp.getService().getUrl();
   var authorUrl = webAppUrl + '?key=' + (msData.key || '');
 
@@ -429,13 +437,14 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId, comm
     (meAuthorComment ? '<p><strong>編集幹事よりのコメント / Comments from Managing Editor:</strong><br>' + escHtml(meAuthorComment).replace(/\n/g, '<br>') + '</p>' : '') +
     (eicComment      ? '<p><strong>編集委員長よりのコメント / Comments from Editor-in-Chief:</strong><br>' + escHtml(eicComment).replace(/\n/g, '<br>') + '</p>' : '');
 
-  // ファイルリンク（著者へ送付するもののみ: EICファイル・コメントPDF）
+  // ファイルリンク（EICファイル・コメントPDFを 1 フォルダにまとめて送付）
   // 投稿原稿フォルダ・編集幹事ファイルはダッシュボードから参照
-  var fileParts = [];
-  if (eicFileUrl)    fileParts.push('<li><a href="' + eicFileUrl    + '" target="_blank">【閲覧専用】編集委員長添付ファイル / Editor-in-Chief\'s Files</a></li>');
-  if (commentPdfUrl) fileParts.push('<li><a href="' + commentPdfUrl + '" target="_blank">【閲覧専用】オープンコメントPDF / Open Comments PDF</a></li>');
-  var fileLinksHtml = fileParts.length > 0
-    ? '<p><strong>ファイル / Files:</strong></p><ul>' + fileParts.join('') + '</ul>'
+  var fileLinksHtml = eicFileUrl
+    ? '<div style="margin-top:20px; padding:20px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; text-align:center;">' +
+        '<p style="margin:0 0 12px 0; font-weight:bold; color:#0369a1; font-size:15px;">📁 判定資料・コメントPDF / Decision Materials &amp; Comments PDF</p>' +
+        '<p style="margin:0 0 15px 0; font-size:13.5px; color:#0c4a6e; line-height:1.5;">編集委員長からの添付ファイル・オープンコメントPDFをご確認ください。<br>Please find the EIC\'s attached files and open-comments PDF in the shared folder below.</p>' +
+        '<a href="' + eicFileUrl + '" style="display:inline-block; padding:10px 24px; background:#2563eb; color:#ffffff !important; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14.5px;">閲覧用フォルダを開く / Open Shared Folder</a>' +
+      '</div>'
     : '';
 
   var bodyHtml =
