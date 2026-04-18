@@ -1199,26 +1199,7 @@ function _buildCommentAttachBox(ms, isFinal) {
   var cbId     = isFinal ? 'eicFinalAttachCommentFile' : 'eicAttachCommentFile';
   var docFldId = isFinal ? 'finalCommentDocId'         : 'commentDocId';
   var edFldId  = isFinal ? 'finalCommentEditorKey'     : 'commentEditorKey';
-
-  // 最終確認ルートでは Google Doc 編集リンク＋説明文をチェックボックスの上に表示する
-  // （標準ルートでは buildEditorReportLinksPanel が同等の表示を担うためここでは不要）
-  var editLinkHtml = '';
-  if (isFinal) {
-    editLinkHtml =
-      '<div style="margin:1.25rem 0 0.4rem;">'
-      + '<a href="https://docs.google.com/document/d/' + docId + '/edit" target="_blank"'
-      +    ' style="font-size:0.9rem; color:#059669; text-decoration:none;">'
-      +    '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'
-      + '</a>'
-      + '</div>'
-      + '<div style="margin-bottom:0.75rem; padding:0.55rem 0.8rem; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:6px; font-size:0.825rem; line-height:1.65; color:#065f46;">'
-      +   '編集後のコメント集は送信時にPDFへ変換され、EIC添付ファイルとともに著者の共有フォルダに格納されます。<br>'
-      +   '<span style="color:#047857;">After editing, the compiled comments will be converted to PDF and placed in the author\'s shared folder alongside the EIC\'s attached files.</span>'
-      + '</div>';
-  }
-
-  return editLinkHtml
-       + '<div style="margin:0.75rem 0; display:flex; align-items:center; gap:0.5rem;">'
+  return '<div style="margin:0.75rem 0; display:flex; align-items:center; gap:0.5rem;">'
        + '<input type="checkbox" id="' + cbId + '" checked style="width:16px; height:16px; cursor:pointer;">'
        + '<label for="' + cbId + '" style="font-size:0.875rem; color:#374151; cursor:pointer;">オープンコメントをPDF化して共有フォルダに含める / Include open-comments PDF in shared folder</label>'
        + '</div>'
