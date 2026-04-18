@@ -2388,7 +2388,7 @@ function renderEicOverview(container) {
     var dt = new DataTransfer();
     Array.from(e.dataTransfer.files).forEach(function (f) { dt.items.add(f); });
     input.files = dt.files;
-    input.dispatchEvent(new Event('change'));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   });
 })();
 
