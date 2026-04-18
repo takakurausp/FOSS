@@ -475,14 +475,14 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId) {
     : '';
 
   var bodyHtml =
+    '<p>A decision has been reached regarding your manuscript <strong>' + escHtml(msData.MsVer || '') + '</strong>.</p>' +
+    '<p>原稿 <strong>' + escHtml(msData.MsVer || '') + '</strong> について、編集委員会よりご連絡いたします。</p>' +
+    '<hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">' +
     '<div style="background:#f1f5f9; padding:20px; border-radius:8px; margin:20px 0; font-size:15px; line-height:1.6;">' +
       templateText +
     '</div>' +
     commentsHtml +
-    fileLinksHtml +
-    '<hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">' +
-    '<p>原稿 <strong>' + escHtml(msData.MsVer || '') + '</strong> について、編集委員会よりご連絡いたします。</p>' +
-    '<p>上記内容および添付ファイルをご確認ください。</p>';
+    fileLinksHtml;
 
   // 再投稿ボタンは Decisions シートの Resubmit 列が yes の場合のみ表示
   var showResubmitButton = !!decisionTemplates.allowsResubmit;
@@ -527,14 +527,14 @@ function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings) 
   }
   var meInternalComment = msData.managingEditorInternalComment || '';
   var eicProductionComment = data.eicProductionComment || '';
-  var meFileUrl         = msData.managingEditorFileUrl || '';
   var paperTitle        = _buildPaperTitle(msData);
 
   // 印刷関連情報
   // Manuscripts シートの列名は 'Reprint request' と 'English_editing'。
   // findRecordByKey はヘッダ名そのままのキーで返すため、ブラケット記法で参照する。
-  var reprintInfo  = msData['Reprint request'] || '';
-  var editingInfo  = msData['English_editing'] || '';
+  // 値が 0（数値）の場合も正しく表示できるよう String() で変換する（|| '' は 0 を空文字に変換するため不可）。
+  var reprintInfo = msData['Reprint request'] != null ? String(msData['Reprint request']).trim() : '';
+  var editingInfo = msData['English_editing']  != null ? String(msData['English_editing']).trim()  : '';
 
   // 受領票 PDF の生成
   var receiptBlob = null;
@@ -550,8 +550,7 @@ function _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings) 
   var fileParts = [];
   if (submittedFolderUrl) fileParts.push('<li><a href="' + submittedFolderUrl + '" target="_blank">【閲覧専用】投稿原稿フォルダ / Submitted Files Folder</a></li>');
   if (receiptFolderUrl)   fileParts.push('<li><a href="' + receiptFolderUrl   + '" target="_blank">【閲覧専用】受領票フォルダ / Receipt Folder</a></li>');
-  if (meFileUrl)  fileParts.push('<li><a href="' + meFileUrl  + '" target="_blank">【閲覧専用】編集幹事ファイル / Managing Editor\'s Files</a></li>');
-  if (eicFileUrl) fileParts.push('<li><a href="' + eicFileUrl + '" target="_blank">【閲覧専用】委員長ファイル / Editor-in-Chief\'s Files</a></li>');
+  if (eicFileUrl) fileParts.push('<li><a href="' + eicFileUrl + '" target="_blank">【閲覧専用】編集委員長の添付ファイル / Editor-in-Chief\'s Files</a></li>');
   var fileLinksHtml = fileParts.length > 0
     ? '<p><strong>参照フォルダ / Reference Folders:</strong></p><ul>' + fileParts.join('') + '</ul>'
     : '';
@@ -648,12 +647,12 @@ function _notifyAuthorOfAcceptance(msData, data, settings, ssId) {
 
   var bodyHtml =
     '<p>A decision has been reached regarding your manuscript <strong>' + escHtml(msData.MsVer || '') + '</strong>.</p>' +
+    '<p>ご投稿いただいた原稿 <strong>' + escHtml(msData.MsVer || '') + '</strong> に対する判定をお送りいたします。</p>' +
+    '<hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">' +
     '<div style="background:#f1f5f9; padding:20px; border-radius:8px; margin:20px 0; font-size:15px; line-height:1.6;">' +
       templateText +
     '</div>' +
-    commentsHtml +
-    '<hr style="border:none; border-top:1px solid #e2e8f0; margin:20px 0;">' +
-    '<p>ご投稿いただいた原稿 <strong>' + escHtml(msData.MsVer || '') + '</strong> に対する判定をお送りいたします。</p>';
+    commentsHtml;
 
   var html = renderRichEmail({
     journalName: settings.Journal_Name,
@@ -897,8 +896,8 @@ function _mapMsDataForReceipt(msData) {
     runningTitle:      msData.RunningTitle     || '',
     submittedFiles:    msData.submittedFiles   || '',
     sendDateTime:      msData.Submitted_At     || '',
-    reprintRequest:    msData['Reprint request'] || '',
-    englishEditing:    msData['English_editing'] || '',
+    reprintRequest:    msData['Reprint request'] != null ? String(msData['Reprint request']) : '',
+    englishEditing:    msData['English_editing']  != null ? String(msData['English_editing'])  : '',
     authorAffiliation: msData.CA_Affiliation   || '',
     authorsJp:         msData.AllAuthors_JP    || msData.Authors_JP       || '',
     authorsEn:         msData.AllAuthors_EN    || msData.Authors_EN       || ''

@@ -186,11 +186,11 @@ function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, dec
 
   const bodyHtml = `
     <p>A decision has been reached regarding your manuscript <strong>${msData.MsVer}</strong>, entitled "${msData.TitleEN}".</p>
+    <p>ご投稿いただいた原稿 <strong>${msData.MsVer}</strong> に対する判定をお送りいたします。</p>
+    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
     <div style="background:#f1f5f9; padding:20px; border-radius:8px; margin:20px 0; font-size: 15px; line-height: 1.6;">
       ${mainText}
     </div>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>ご投稿いただいた原稿 <strong>${msData.MsVer}</strong> に対する判定をお送りいたします。</p>
   `;
 
   // 再投稿ボタンは Decisions シートの Resubmit 列が yes の場合のみ表示
@@ -441,11 +441,11 @@ function apiGetFeedbackPreview(data) {
 
   const bodyHtml = `
     <p>A decision has been reached regarding your manuscript <strong>${msData.MsVer}</strong>, entitled "${msData.TitleEN}".</p>
+    <p>ご投稿いただいた原稿 <strong>${msData.MsVer}</strong> に対する判定をお送りいたします。</p>
+    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
     <div style="background:#f1f5f9; padding:20px; border-radius:8px; margin:20px 0; font-size: 15px; line-height: 1.6;">
       ${mainText}
     </div>
-    <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>ご投稿いただいた原稿 <strong>${msData.MsVer}</strong> に対する判定をお送りいたします。</p>
   `;
 
   const showResubmitButton = !!decisionTemplates.allowsResubmit;
