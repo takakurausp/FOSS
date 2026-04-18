@@ -455,7 +455,7 @@ function renderAuthorView(container) {
               <h3 style="margin-bottom:1rem;">査読結果 / Review Results</h3>
               ${buildEditorReviewResultsPanel(ms._reviewerList || [], true)}
               ${buildMeEditorPanel(ms._editorList || [])}
-              ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt))}
+              ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt), undefined, ms)}
             </div>
             ${ms._editorScore && !ms.sentBackAt ? `
             <div class="status-card" style="margin-top:2rem; background:#fffbeb; border:2px solid #fcd34d;">
@@ -515,7 +515,7 @@ function renderAuthorView(container) {
 
               <!-- 担当編集者レポート -->
               ${buildMeEditorPanel(ms._editorList || [])}
-              ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.eicFinalDecision))}
+              ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.eicFinalDecision), undefined, ms)}
 
               <!-- 編集幹事フィードバック -->
               <div style="margin-top:1.5rem; padding:1.25rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
@@ -1193,9 +1193,11 @@ async function submitRev(key) {
  */
 function _buildCommentAttachBox(ms, isFinal) {
   var ed = (ms._editorList || []).find(function(e) { return e.reportGoogleDocId; });
-  if (!ed) return '';
-  var docId    = ed.reportGoogleDocId || '';
-  var edKey    = ed.editorKey || '';
+  // 受理済み再投稿フロー（ME 直行ルート）では担当編集者の reportGoogleDocId が無いため、
+  // ME 用に作成された Doc (ms.meCommentGoogleDocId) をフォールバックとして使う。
+  var docId = ed ? (ed.reportGoogleDocId || '') : (ms.meCommentGoogleDocId || '');
+  var edKey = ed ? (ed.editorKey || '')         : '';
+  if (!docId) return '';
   var cbId     = isFinal ? 'eicFinalAttachCommentFile' : 'eicAttachCommentFile';
   var docFldId = isFinal ? 'finalCommentDocId'         : 'commentDocId';
   var edFldId  = isFinal ? 'finalCommentEditorKey'     : 'commentEditorKey';
@@ -1211,11 +1213,10 @@ function _buildCommentAttachBox(ms, isFinal) {
  * 担当編集者のレポートリンク（PDF・Word）をパネル外に表示するブロック
  * 査読過程全体に関わる資料として、担当編集者アコーディオンの外に独立して配置する。
  */
-function buildEditorReportLinksPanel(editorList, decisionSent, allowDocEdit) {
+function buildEditorReportLinksPanel(editorList, decisionSent, allowDocEdit, ms) {
   decisionSent  = !!decisionSent;
   allowDocEdit  = (allowDocEdit === undefined) ? true : !!allowDocEdit;
   const reported = (editorList || []).filter(e => e.Score && (e.reportPdfUrl || e.reportWordUrl));
-  if (reported.length === 0) return '';
 
   function linkDiv(url, color, label) {
     return '<div style="margin-bottom:0.4rem;"><a href="' + url + '" target="_blank" style="font-size:0.9rem; color:' + color + '; text-decoration:none;">' + label + '<\/a><\/div>';
@@ -1236,6 +1237,22 @@ function buildEditorReportLinksPanel(editorList, decisionSent, allowDocEdit) {
       );
     }
     if (e.reportCommentPdfUrl) items.push(linkDiv(e.reportCommentPdfUrl, '#7c3aed', '📨 送付済みコメントPDF / Sent Comments PDF'));
+  }
+
+  // 受理済み再投稿フロー（ME 直行ルート）：担当編集者レポートが存在しない場合、
+  // 編集幹事が作成した Open-Comments Doc/Word を表示する。
+  if (reported.length === 0 && ms) {
+    if (ms.meCommentWordUrl) items.push(linkDiv(ms.meCommentWordUrl, '#2563eb', '📝 オープンコメント集（Word） / Open Comments (Word)'));
+    if (ms.meCommentGoogleDocId && !decisionSent && allowDocEdit) {
+      items.push(linkDiv('https://docs.google.com/document/d/' + ms.meCommentGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
+      items.push(
+        '<div style="margin-top:0.15rem; margin-bottom:0.6rem; padding:0.55rem 0.8rem; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:6px; font-size:0.825rem; line-height:1.65; color:#065f46;">' +
+        '編集後のコメント集は送信時にPDFへ変換され、GoogleドライブのリンクとしてメールでEIC添付ファイルとともに著者に共有されます。<br>' +
+        '<span style="color:#047857;">After editing, the compiled comments will be converted to PDF and shared with the author as a Google Drive link alongside the EIC\'s attached files.<\/span>' +
+        '<\/div>'
+      );
+    }
+    if (ms.meCommentPdfUrl) items.push(linkDiv(ms.meCommentPdfUrl, '#7c3aed', '📨 送付済みコメントPDF / Sent Comments PDF'));
   }
 
   if (items.length === 0) return '';
@@ -1412,7 +1429,7 @@ function renderManagingEditorView(container) {
           </div>` : ''}
         ${buildEditorReviewResultsPanel(ms._reviewerList || [])}
         ${buildMeEditorPanel(ms._editorList || [])}
-        ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt || ms.eicFinalDecision), false)}
+        ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt || ms.eicFinalDecision), false, ms)}
         ${formOrConfirm}
         ${_buildFinalDecisionBanner(ms)}
       </div>`;

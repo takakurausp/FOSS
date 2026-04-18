@@ -16,7 +16,7 @@ function apiSubmitRecommendation(data) {
   const msVer = msData.MsVer;
   const msId = msData.MS_ID;
   const now = new Date();
-  const todayNow = Utilities.formatDate(now, 'JST', 'yyyy/MM/dd HH:mm');
+  const todayNow = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
 
   // 2. 査読報告書（推薦書）の作成 — Drive 操作を先に完了させてから DB を更新する。
   // createRecommendationReport が例外を投げても DB は未変更のままなので不整合が生じない。
@@ -37,32 +37,12 @@ function apiSubmitRecommendation(data) {
     'reportGoogleDocId':         reportFiles.googleDocId         || ''
   });
 
-  // 4. 受理スコアかどうかで通知先を分岐
-  //    条件A（受理）: managingEditorKey を生成して編集幹事に通知
-  //    条件B（その他）: 既存フロー通り委員長に通知
-  const isAccepted = isScoreAccepted(ssId, data.score);
-  writeLog(`ルーティング判定: score="${data.score}" isAccepted=${isAccepted} → ${isAccepted ? '編集幹事ルート (条件A)' : '委員長直通ルート (条件B)'}`);
+  // 4. 通常ルート: 担当編集者の推薦は必ず EIC に送る。
+  //    isAccepted スコアの場合でも、EIC 側で再判定後に apiSubmitFeedback から
+  //    編集幹事ルートへ転送される（FeedbackModule._sendEicAcceptanceToManagingEditor）。
+  sendRecommendationToChiefEditor(msData, data, reportFiles, settings);
 
-  if (isAccepted) {
-    // 条件A: 編集幹事ルート
-    if (!settings.managingEditorEmail) {
-      // 編集幹事メール未設定の場合はエラーを記録して処理を中断
-      writeLog('[ERROR] Recommendation Routing: score="' + data.score + '" は受理スコアですが、Settings に managingEditorEmail が設定されていません。編集幹事への通知ができません。Settings シートに managingEditorEmail を設定してください。');
-      throw new Error('managingEditorEmail が Settings に設定されていません。受理原稿の通知先として編集幹事のメールアドレスを設定してください。');
-    }
-    const managingEditorKey = Utilities.getUuid();
-    // Manuscripts シートに managingEditorKey と finalStatus を記録
-    updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
-      'managingEditorKey': managingEditorKey,
-      'finalStatus':       'final_review'
-    });
-    sendRecommendationToManagingEditor(msData, data, reportFiles, settings, managingEditorKey);
-  } else {
-    // 条件B: 既存フロー（委員長へ直接通知）
-    sendRecommendationToChiefEditor(msData, data, reportFiles, settings);
-  }
-
-  writeLog(`Recommendation Submitted: ${msVer} by ${msData.Editor_Name} - Score: ${data.score} (${isAccepted ? 'Accepted→ManagingEditor' : 'NotAccepted→EIC'})`);
+  writeLog(`Recommendation Submitted: ${msVer} by ${msData.Editor_Name} - Score: ${data.score} → EIC`);
 
   return { success: true };
 }
@@ -78,7 +58,7 @@ function createRecommendationReport(msData, data, ssId, settings) {
   Logger.log('createRecommendationReport: workingFolder OK.');
 
   const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : 'Journal';
-  const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
   const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const nl2br = s => esc(s).replace(/\n/g, '<br>');
 
@@ -212,7 +192,7 @@ function createRecommendationReport(msData, data, ssId, settings) {
   // ─────────────────────────────────────────────────────────────
   // 4. PDF 全史レポート作成 (コンフィデンシャルコメント含む全情報)
   // ─────────────────────────────────────────────────────────────
-  const fmtDate = v => v instanceof Date ? Utilities.formatDate(v, 'JST', 'yyyy/MM/dd HH:mm') : String(v || '');
+  const fmtDate = v => v instanceof Date ? Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm') : String(v || '');
   const sectionTitle = (title) =>
     `<div style="background:#1e40af; color:#fff; padding:6px 12px; margin:24px 0 10px; border-radius:4px; font-size:13px; font-weight:bold;">${esc(title)}</div>`;
   const infoRow = (labelJp, labelEn, value) =>
@@ -367,54 +347,7 @@ function getFilteredReviewLog(ssId, msVer) {
 }
 
 /**
- * 条件A: 編集幹事への通知（受理スコアの場合）
- */
-function sendRecommendationToManagingEditor(msData, data, reportFiles, settings, managingEditorKey) {
-  // managingEditorEmail の存在チェックは呼び出し元 (apiSubmitRecommendation) で実施済み
-
-  const webAppUrl = ScriptApp.getService().getUrl();
-  const meLink = webAppUrl + '?managingEditorKey=' + managingEditorKey;
-  const paperTitle = (msData.TitleJP && msData.TitleEN)
-    ? msData.TitleJP + ' / ' + msData.TitleEN
-    : (msData.TitleJP || msData.TitleEN || '');
-
-  const bodyHtml = `
-    <p>Responsible editor <strong>${msData.Editor_Name}</strong> has submitted an acceptance recommendation for the following manuscript. Please open the Managing Editor dashboard using the button below to complete your review.</p>
-    <p>担当編集者 <strong>${msData.Editor_Name}</strong> より、以下の原稿の判定案（受理推薦）が提出されました。以下のボタンより編集幹事ダッシュボードを開き、最終確認作業をお願いいたします。</p>
-    <table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">
-      <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">原稿番号 / MS ID</th>
-          <td style="padding:8px; border-bottom:1px solid #eee;">${msData.MsVer}</td></tr>
-      <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">タイトル / Title</th>
-          <td style="padding:8px; border-bottom:1px solid #eee;">${paperTitle}</td></tr>
-      <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">推薦スコア / Recommended Score</th>
-          <td style="padding:8px; border-bottom:1px solid #eee; font-weight:bold;">${data.score}</td></tr>
-      <tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">責任著者 / Corresponding Author</th>
-          <td style="padding:8px; border-bottom:1px solid #eee;">${msData.CA_Name || ''}</td></tr>
-    </table>
-  `;
-
-  const html = renderRichEmail({
-    journalName: settings.Journal_Name,
-    greeting: '編集幹事 殿 / Dear Managing Editor,',
-    bodyHtml: bodyHtml,
-    buttonUrl: meLink,
-    buttonLabel: '編集幹事ダッシュボードを開く / Open Managing Editor Dashboard',
-    footerHtml: settings.mailFooter || ''
-  });
-
-  sendEmailSafe({
-    to: settings.managingEditorEmail,
-    subject: `[${settings.Journal_Name}] 受理原稿の最終確認依頼 / Final Review Request: ${msData.MsVer}`,
-    htmlBody: html,
-    attachments: [reportFiles.pdf.getAs(MimeType.PDF), reportFiles.word.getBlob()]
-  }, 'Recommendation (Accepted) to Managing Editor: ' + msData.MsVer);
-
-  // ※ 編集委員長への通知は、編集幹事がチェックを完了して送信した後に
-  //   _sendManagingEditorReviewToEIC() によって行われる。ここでは送らない。
-}
-
-/**
- * 委員長へ通知（条件B: 非受理スコアの場合の既存フロー）
+ * 委員長へ通知（通常ルート: 担当編集者の推薦は必ず EIC に送られる）
  */
 function sendRecommendationToChiefEditor(msData, data, reportFiles, settings) {
   const webAppUrl = ScriptApp.getService().getUrl();

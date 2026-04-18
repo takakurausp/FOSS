@@ -13,7 +13,7 @@ function apiSubmitReview(data) {
   const hexId = msData.MsVerRevHex;
   const msVer = msData.MsVer;
   const msId = msData.MS_ID;
-  const todayNow = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const todayNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
 
   // 2 & 3. Drive/Docs 操作を先に完了させてから DB を更新する。
   // Drive/Docs で例外が発生しても DB は未変更のままなので不整合が生じない。

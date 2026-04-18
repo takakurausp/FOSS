@@ -208,7 +208,7 @@ function sendEicNotification(ms, pdfBlob) {
 function generateReceiptPdf(ms, settings) {
   try {
     const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : 'Journal';
-    const date = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+    const date = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     const fileName = `${ms.MsVer || 'Receipt'}_Receipt.pdf`;
 
     const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -430,6 +430,7 @@ function generateReceiptPdf(ms, settings) {
  * クォータを確認してメール送信。上限超過時は Emails シートに一時保存する。
  * @param {Object} options MailApp.sendEmail と同じ形式 (to, cc, subject, htmlBody, attachments)
  * @param {string} logText ログ用の説明文
+ * @returns {boolean} 即時送信に成功した場合のみ true。キューイング・失敗時は false。
  */
 function sendEmailSafe(options, logText) {
   const quota = MailApp.getRemainingDailyQuota();
@@ -437,14 +438,16 @@ function sendEmailSafe(options, logText) {
     try {
       MailApp.sendEmail(options);
       Logger.log('Email sent: ' + logText);
+      return true;
     } catch (e) {
       Logger.log('Email send failed (' + logText + '): ' + e.message + ' — saving to pending');
       savePendingEmail(options, logText);
+      return false;
     }
-  } else {
-    Logger.log('Quota exhausted — saving to pending: ' + logText);
-    savePendingEmail(options, logText);
   }
+  Logger.log('Quota exhausted — saving to pending: ' + logText);
+  savePendingEmail(options, logText);
+  return false;
 }
 
 /**
@@ -495,7 +498,7 @@ function savePendingEmail(options, logText) {
     options.subject  || '',
     options.htmlBody || '',
     attachmentIds,
-    Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm'),
+    Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm'),
     logText || ''
   ]);
 }

@@ -56,7 +56,7 @@ function apiSubmitSubmission(data) {
     letterToEditor: data.letterToEditor || '',
     englishEditing: data.englishEditing || '',
     reprintRequest: data.reprintRequest || '',
-    sendDateTime: Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss'),
+    sendDateTime: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss'),
     submittedFiles: ''
   };
 
@@ -271,7 +271,7 @@ function apiSubmitResubmission(data) {
     letterToEditor: data.letterToEditor || '',
     englishEditing: data.englishEditing || prevMs['English_editing'] || '',
     reprintRequest: data.reprintRequest || prevMs['Reprint request'] || '',
-    sendDateTime: Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss')
+    sendDateTime: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss')
   };
 
   // 3. フォルダ作成とファイル保存

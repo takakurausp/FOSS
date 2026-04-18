@@ -470,7 +470,7 @@ function apiSubmitInvitationResponse(role, key, answer, message) {
     if (!editorLog) throw new Error('Editor record not found.');
     
     // 1. Logに記録
-    const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+    const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', key, {
       'edtOk': answer,
       'Answer_At': now,
@@ -511,7 +511,7 @@ function apiSubmitInvitationResponse(role, key, answer, message) {
     if (!reviewLog) throw new Error('Reviewer record not found.');
     
     // 1. Logに記録
-    const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+    const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     updateLogCell(ssId, REVIEW_LOG_SHEET_NAME, 'reviewKey', key, {
       'revOk': answer,
       'Answer_At': now,
@@ -572,7 +572,7 @@ function apiCancelReviewerInvitation(reviewKey) {
     throw new Error('査読結果が提出済みのため取り消しできません。/ Cannot cancel: the review has already been submitted.');
   }
 
-  const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
   updateLogCell(ssId, REVIEW_LOG_SHEET_NAME, 'reviewKey', reviewKey, {
     'revOk':     'cancelled',
     'Answer_At': now
@@ -592,7 +592,7 @@ function apiCancelEditorAssignment(editorKey) {
     throw new Error('この割当はすでに辞退済みまたは取消済みのため操作できません。/ This assignment has already been declined or cancelled.');
   }
 
-  const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
   updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', editorKey, {
     'edtOk':     'cancelled',
     'Answer_At': now

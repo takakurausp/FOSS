@@ -14,7 +14,7 @@ function apiSubmitFeedback(data) {
   const msVer = msData.MsVer;
   const msId = msData.MS_ID;
   const now = new Date();
-  const todayNow = Utilities.formatDate(now, 'JST', 'yyyy/MM/dd HH:mm');
+  const todayNow = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
   const decisionTemplates = getDecisionTemplates(ssId, data.score);
   const isAccepted = decisionTemplates.isAccepted ? 'yes' : 'no';
 
@@ -144,7 +144,7 @@ function sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, dec
   const weeks = weeksMatch ? parseInt(weeksMatch[1]) : 8;
   const dueDateObj = new Date();
   dueDateObj.setDate(dueDateObj.getDate() + (weeks * 7));
-  const dueDateStr = Utilities.formatDate(dueDateObj, 'JST', 'yyyy/MM/dd');
+  const dueDateStr = Utilities.formatDate(dueDateObj, 'Asia/Tokyo', 'yyyy/MM/dd');
 
   // プレースホルダの置換
   const replacements = {
@@ -402,7 +402,7 @@ function apiGetFeedbackPreview(data) {
   const weeks = weeksMatch ? parseInt(weeksMatch[1]) : 8;
   const dueDateObj = new Date();
   dueDateObj.setDate(dueDateObj.getDate() + (weeks * 7));
-  const dueDateStr = Utilities.formatDate(dueDateObj, 'JST', 'yyyy/MM/dd');
+  const dueDateStr = Utilities.formatDate(dueDateObj, 'Asia/Tokyo', 'yyyy/MM/dd');
 
   const replacements = {
     'authorName': msData.CA_Name,

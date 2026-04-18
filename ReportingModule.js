@@ -13,7 +13,7 @@ function sendWeeklyActivityReport() {
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
-  const dateRangeStr = Utilities.formatDate(sevenDaysAgo, 'JST', 'yyyy/MM/dd') + ' - ' + Utilities.formatDate(now, 'JST', 'yyyy/MM/dd');
+  const dateRangeStr = Utilities.formatDate(sevenDaysAgo, 'Asia/Tokyo', 'yyyy/MM/dd') + ' - ' + Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy/MM/dd');
 
   // 1. 最近のアクティビティを取得 (Logシート)
   const activityLogs = getRecentLogs(ssId, sevenDaysAgo);
@@ -25,7 +25,7 @@ function sendWeeklyActivityReport() {
   const html = generateReportHtml(settings.Journal_Name, dateRangeStr, activityLogs, statusSummary);
   
   // 4. PDFに変換
-  const pdfBlob = HtmlService.createHtmlOutput(html).getBlob().getAs(MimeType.PDF).setName(`Weekly_Report_${Utilities.formatDate(now, 'JST', 'yyyyMMdd')}.pdf`);
+  const pdfBlob = HtmlService.createHtmlOutput(html).getBlob().getAs(MimeType.PDF).setName(`Weekly_Report_${Utilities.formatDate(now, 'Asia/Tokyo', 'yyyyMMdd')}.pdf`);
 
   // 5. メール送信
   const subject = `[${settings.Journal_Name}] 週次活動レポート / Weekly Activity Report (${dateRangeStr})`;
@@ -67,7 +67,7 @@ function archiveMonthlyLogs() {
   const firstDayPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
   
-  const monthStr = Utilities.formatDate(firstDayPrevMonth, 'JST', 'yyyy-MM');
+  const monthStr = Utilities.formatDate(firstDayPrevMonth, 'Asia/Tokyo', 'yyyy-MM');
 
   // 1. ログシートから対象データを抽出
   const logSheet = SpreadsheetApp.openById(ssId).getSheetByName(LOG_SHEET_NAME);
@@ -149,7 +149,7 @@ function getRecentLogs(ssId, sinceDate) {
   if (!sheet) return [];
   const data = sheet.getDataRange().getValues();
   return data.slice(1).filter(row => new Date(row[0]) >= sinceDate).map(row => ({
-    date: Utilities.formatDate(new Date(row[0]), 'JST', 'MM/dd HH:mm'),
+    date: Utilities.formatDate(new Date(row[0]), 'Asia/Tokyo', 'MM/dd HH:mm'),
     text: row[1]
   }));
 }

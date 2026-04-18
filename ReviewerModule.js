@@ -60,7 +60,7 @@ function computeReviewDeadline(daysString) {
   const days = parseInt(daysString, 10) || 21;
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return Utilities.formatDate(d, 'JST', 'yyyy/MM/dd');
+  return Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy/MM/dd');
 }
 
 function sendReviewerMail(email, name, letterText, msData, settings, revKey, editorName, editorEmail, deadline) {
@@ -155,7 +155,7 @@ function logReviewerToDb(ssId, hexId, msVer, revKey, edName, edEmail, revName, r
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const newRow = new Array(headers.length).fill('');
 
-  const todayNow = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const todayNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
 
   const mapping = {
     'MsVerRevHex': hexId,

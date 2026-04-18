@@ -31,7 +31,7 @@ function apiSubmitManagingEditorReview(data) {
   const msData = getManuscriptData('managing-editor', data.managingEditorKey);
   if (!msData) throw new Error('原稿が見つかりません。/ Manuscript not found.');
 
-  const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
 
   // 書き込み済み原稿ファイルを Drive に保存
   let fileUrl = '';
@@ -71,13 +71,30 @@ function apiSubmitManagingEditorReview(data) {
     }
   }
 
+  // 受理済み再投稿フロー（担当編集者を介さず直接 ME へ来た場合）では
+  // 既存 Google Doc が存在しない。EIC が編集してオープンコメントPDFを著者に
+  // 送付できるよう、ME のコメントを内容とした新規 Open-Comments Doc/Word を作成する。
+  var meReportFiles = null;
+  if (!docId) {
+    try {
+      meReportFiles = createManagingEditorOpenCommentsDoc(msData, data, settings);
+    } catch (meErr) {
+      Logger.log('createManagingEditorOpenCommentsDoc failed: ' + meErr.message);
+    }
+  }
+
   // Manuscripts シートを更新
-  updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
+  var msUpdates = {
     'managingEditorAuthorComment':   data.authorComment   || '',
     'managingEditorInternalComment': data.internalComment || '',
     'managingEditorFileUrl':         fileUrl,
     'managingEditorSentAt':          now
-  });
+  };
+  if (meReportFiles) {
+    msUpdates.meCommentGoogleDocId = meReportFiles.googleDocId || '';
+    msUpdates.meCommentWordUrl     = meReportFiles.wordUrl     || '';
+  }
+  updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, msUpdates);
 
   // 担当編集者レポート＋編集幹事コメントを合わせた最終確認レポートPDFを生成
   var reportPdfBlob = null;
@@ -138,7 +155,7 @@ function apiEicFinalAction(data) {
   if (route === 'a') {
     // ルートa: 投稿者に差し戻す — sentBackAt / score / accepted を記録
     var dtRouteA = getDecisionTemplates(ssId, data.decision || '');
-    var nowRouteA = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+    var nowRouteA = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
       'sentBackAt': nowRouteA,
       'score':      data.decision || '',
@@ -172,6 +189,11 @@ function apiEicFinalAction(data) {
         if (data.commentEditorKey) {
           updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.commentEditorKey,
             { 'reportCommentPdfUrl': commentPdfUrlA });
+        } else {
+          // commentEditorKey が無い場合は ME ルート（受理済み再投稿）由来の Doc。
+          // EditorLog ではなく Manuscripts に PDF URL を保存する。
+          updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key,
+            { 'meCommentPdfUrl': commentPdfUrlA });
         }
 
         // PDFが追加されたのでフォルダURLを確定して Manuscripts を更新
@@ -247,6 +269,92 @@ function _resetEditorScoreForMsVer(ssId, msVer) {
 }
 
 /**
+ * 編集幹事のオープンコメントを内容とした Open-Comments Google Doc / Word を新規作成する。
+ *
+ * 受理済み原稿が再投稿された場合、担当編集者の推薦ステップを経由せずに
+ * 直接編集幹事フローへルーティングされるため、既存のオープンコメント Doc が存在しない。
+ * このヘルパは EIC が編集して PDF 化・著者送付できる Doc を新規生成する。
+ *
+ * @param {Object} msData  getManagingEditorManuscriptData() の戻り値
+ * @param {Object} data    apiSubmitManagingEditorReview() の data
+ * @param {Object} settings
+ * @returns {{ googleDocId: string, wordUrl: string }}
+ */
+function createManagingEditorOpenCommentsDoc(msData, data, settings) {
+  var folder = getManuscriptVerFolder(msData, settings);
+  var workingFolder = driveFolderCache.getOrCreateFolder(folder, 'working');
+
+  var styleBody = {};
+  styleBody[DocumentApp.Attribute.FONT_SIZE]   = 10.5;
+  styleBody[DocumentApp.Attribute.BOLD]        = false;
+  styleBody[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+
+  var styleLabel = {};
+  styleLabel[DocumentApp.Attribute.FONT_SIZE]   = 10.5;
+  styleLabel[DocumentApp.Attribute.BOLD]        = true;
+  styleLabel[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+
+  var doc  = DocumentApp.create('Open-Comments-' + (msData.MsVer || ''));
+  var body = doc.getBody();
+  body.setMarginTop(72).setMarginBottom(72).setMarginLeft(85).setMarginRight(85);
+
+  body.appendParagraph('');
+
+  body.appendParagraph('原稿番号 / Manuscript No.: ' + (msData.MsVer || '')).setAttributes(styleBody);
+
+  var titleJP = msData.TitleJP || '';
+  var titleEN = msData.TitleEN || '';
+  var titleText = titleJP && titleEN ? titleJP + '\n' + titleEN : (titleJP || titleEN || '');
+  body.appendParagraph('論文タイトル / Title: ' + titleText).setAttributes(styleBody);
+
+  var authorsJP = msData.AuthorsJP || '';
+  var authorsEN = msData.AuthorsEN || '';
+  var hasFullAuthors = authorsJP || authorsEN;
+  var authorsText = hasFullAuthors
+    ? (authorsJP && authorsEN ? authorsJP + ' / ' + authorsEN : (authorsJP || authorsEN))
+    : (msData.CA_Name || '');
+  var authLabel = hasFullAuthors ? '著者 / Authors' : '責任著者 / Corresponding Author';
+  body.appendParagraph(authLabel + ': ' + authorsText).setAttributes(styleBody);
+
+  body.appendParagraph('論文種別 / Manuscript Type: ' + (msData.MS_Type || '')).setAttributes(styleBody);
+
+  body.appendParagraph('');
+  var introText =
+    'このたびは修正版をご提出いただきありがとうございます。' +
+    '受理内定後の修正稿として、以下の編集幹事のコメントをお伝えいたします。\n\n' +
+    'Thank you for submitting your revised manuscript. ' +
+    'As the comments for this provisionally accepted revision, please find the Managing Editor\'s comments below.';
+  var introPara = body.appendParagraph(introText);
+  introPara.setAttributes(styleBody);
+  introPara.setSpacingAfter(12);
+
+  body.appendHorizontalRule();
+  body.appendParagraph('');
+
+  var meHeading = body.appendParagraph('Managing Editor\'s Comments / 編集幹事のコメント');
+  meHeading.setAttributes(styleLabel);
+  meHeading.setSpacingAfter(4);
+  body.appendParagraph(data.authorComment || '(No comments)').setAttributes(styleBody);
+
+  doc.saveAndClose();
+
+  // Word 形式でも保存（参照用）
+  var wordBlob = getDocxBlob(doc.getId());
+  var wordFile = workingFolder.createFile(wordBlob).setName('Open-Comments-' + (msData.MsVer || '') + '.docx');
+  wordFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  // EIC がブラウザで編集できるよう EDIT 権限を付与し working フォルダへ移動
+  var docFile = DriveApp.getFileById(doc.getId());
+  docFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+  docFile.moveTo(workingFolder);
+
+  return {
+    googleDocId: doc.getId(),
+    wordUrl:     wordFile.getUrl()
+  };
+}
+
+/**
  * 担当編集者レポート＋編集幹事コメントを合わせた最終確認レポートPDFを生成し、
  * Drive の working フォルダに保存して blob を返す。
  *
@@ -258,7 +366,7 @@ function _resetEditorScoreForMsVer(ssId, msVer) {
  */
 function createFinalReviewReport(msData, data, settings, ssId) {
   const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : 'Journal';
-  const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
   const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const nl2br = s => esc(s).replace(/\n/g, '<br>');
 
@@ -444,7 +552,7 @@ function _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId) {
   var weeksA = weeksMatchA ? parseInt(weeksMatchA[1]) : 8;
   var dueDateObjA = new Date();
   dueDateObjA.setDate(dueDateObjA.getDate() + (weeksA * 7));
-  var dueDateStrA = Utilities.formatDate(dueDateObjA, 'JST', 'yyyy/MM/dd');
+  var dueDateStrA = Utilities.formatDate(dueDateObjA, 'Asia/Tokyo', 'yyyy/MM/dd');
 
   var replacements = {
     'authorName':         msData.CA_Name || '',
@@ -818,7 +926,7 @@ function apiStopManuscriptByEic(data) {
   var msData = getManuscriptData('eic', data.eicKey);
   if (!msData) throw new Error('原稿が見つかりません。/ Manuscript not found.');
 
-  var now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss');
+  var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
   updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
     'stoppedByEicAt': now
   });

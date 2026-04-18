@@ -40,7 +40,7 @@ function apiAssignEditor(data) {
   const editorKey = msVerRevHex + Utilities.getUuid().replace(/-/g, '');  // CSPRNG (128 bit)
 
   // 4. Editor_logへの記録
-  const now = Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm');
+  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
   addEditorLogEntry(ssId, {
     MsVer: msVer,
     MsVerRevHex: msVerRevHex,

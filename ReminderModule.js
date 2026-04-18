@@ -12,8 +12,10 @@
  * 【ログシートに必要な列】
  * Editor_log  : Reminder1_At, Reminder2_At, Reminder3_At
  * Review_log  : Reminder1_At, Reminder2_At, Reminder3_At
- * （列が存在しない場合はリマインド送信済みフラグが記録されないため、毎日再送されます。
- *   必ず各シートに上記3列を追加してください。）
+ *               SubReminder1_At, SubReminder2_At, SubReminder3_At
+ * （Reminder*_At 列が存在しない場合はリマインド送信済みフラグが記録されないため、
+ *   毎日再送されます。必ず各シートに上記列を追加してください。
+ *   Review_log の SubReminder*_At 列は、存在しなければ自動追加されます。）
  */
 
 /**
@@ -86,9 +88,13 @@ function checkEditorReminders(ssId, settings, days) {
     const level = calcReminderLevel(elapsed, days, rem1, rem2, rem3);
     if (level === 0) continue;
 
-    sendEditorReminderEmail(editorEmail, editorName, editorKey, msVer, elapsed, level, settings);
+    const sent = sendEditorReminderEmail(editorEmail, editorName, editorKey, msVer, elapsed, level, settings);
+    if (!sent) {
+      Logger.log('Editor reminder level ' + level + ' queued (not yet delivered) for ' + editorEmail + ' — timestamp not recorded, will retry tomorrow');
+      continue;
+    }
 
-    const now     = Utilities.formatDate(today, 'JST', 'yyyy/MM/dd HH:mm');
+    const now     = Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     const colName = ['', 'Reminder1_At', 'Reminder2_At', 'Reminder3_At'][level];
     updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', editorKey, { [colName]: now });
     Logger.log('Editor reminder level ' + level + ' sent to ' + editorEmail + ' for ' + msVer);
@@ -144,9 +150,13 @@ function checkReviewerInvitationReminders(ssId, settings, days) {
     const level = calcReminderLevel(elapsed, days, rem1, rem2, rem3);
     if (level === 0) continue;
 
-    sendReviewerInvitationReminderEmail(revEmail, revName, reviewKey, msVer, elapsed, level, settings);
+    const sent = sendReviewerInvitationReminderEmail(revEmail, revName, reviewKey, msVer, elapsed, level, settings);
+    if (!sent) {
+      Logger.log('Reviewer invitation reminder level ' + level + ' queued (not yet delivered) for ' + revEmail + ' — timestamp not recorded, will retry tomorrow');
+      continue;
+    }
 
-    const now     = Utilities.formatDate(today, 'JST', 'yyyy/MM/dd HH:mm');
+    const now     = Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     const colName = ['', 'Reminder1_At', 'Reminder2_At', 'Reminder3_At'][level];
     updateLogCell(ssId, REVIEW_LOG_SHEET_NAME, 'reviewKey', reviewKey, { [colName]: now });
     Logger.log('Reviewer invitation reminder level ' + level + ' sent to ' + revEmail + ' for ' + msVer);
@@ -156,9 +166,36 @@ function checkReviewerInvitationReminders(ssId, settings, days) {
 // ─────────────────────────────────────────
 // 査読承諾済み・未提出の査読者へのリマインド
 // ─────────────────────────────────────────
+
+/**
+ * Review_log に SubReminder1_At / SubReminder2_At / SubReminder3_At 列が
+ * 無ければ末尾に追加する。これらの列が無いと招待フェーズの Reminder*_At 列が
+ * 流用され、招待リマインダを既に受けた査読者に対し提出リマインダが
+ * 送信できなくなる不具合の温床となるため、実行ごとに存在を保証する。
+ */
+function ensureSubReminderColumns(sheet) {
+  const required = ['SubReminder1_At', 'SubReminder2_At', 'SubReminder3_At'];
+  const lastCol  = sheet.getLastColumn();
+  const headers  = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(h => String(h).toLowerCase().trim());
+
+  const missing = required.filter(name => headers.indexOf(name.toLowerCase()) === -1);
+  if (missing.length === 0) return;
+
+  let nextCol = lastCol + 1;
+  missing.forEach(name => {
+    sheet.getRange(1, nextCol).setValue(name);
+    nextCol++;
+  });
+  SpreadsheetApp.flush();
+  Logger.log('ensureSubReminderColumns: added to ' + sheet.getName() + ': ' + missing.join(', '));
+}
+
 function checkReviewerSubmissionReminders(ssId, settings, days) {
   const sheet = SpreadsheetApp.openById(ssId).getSheetByName(REVIEW_LOG_SHEET_NAME);
   if (!sheet) return;
+
+  ensureSubReminderColumns(sheet);
 
   const data    = sheet.getDataRange().getValues();
   const headers = data[0].map(h => String(h).toLowerCase().trim());
@@ -222,11 +259,15 @@ function checkReviewerSubmissionReminders(ssId, settings, days) {
     const level = calcReminderLevel(elapsed, days, rem1, rem2, rem3);
     if (level === 0) continue;
 
-    sendReviewerSubmissionReminderEmail(
+    const sent = sendReviewerSubmissionReminderEmail(
       revEmail, revName, reviewKey, msVer, deadline, folderUrl, elapsed, level, settings
     );
+    if (!sent) {
+      Logger.log('Reviewer submission reminder level ' + level + ' queued (not yet delivered) for ' + revEmail + ' — timestamp not recorded, will retry tomorrow');
+      continue;
+    }
 
-    const now     = Utilities.formatDate(today, 'JST', 'yyyy/MM/dd HH:mm');
+    const now     = Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     const colName = ['', 'Reminder1_At', 'Reminder2_At', 'Reminder3_At'][level];
     const subColName = ['', 'SubReminder1_At', 'SubReminder2_At', 'SubReminder3_At'][level];
     updateLogCell(ssId, REVIEW_LOG_SHEET_NAME, 'reviewKey', reviewKey,
@@ -279,7 +320,7 @@ function sendEditorReminderEmail(toEmail, toName, editorKey, msVer, elapsed, lev
     footerHtml:  settings.mailFooter || ''
   });
 
-  sendEmailSafe({ to: toEmail, subject, htmlBody: html },
+  return sendEmailSafe({ to: toEmail, subject, htmlBody: html },
     'Editor Reminder L' + level + ': ' + msVer + ' to ' + toName);
 }
 
@@ -308,7 +349,7 @@ function sendReviewerInvitationReminderEmail(toEmail, toName, reviewKey, msVer, 
     footerHtml:  settings.mailFooter || ''
   });
 
-  sendEmailSafe({ to: toEmail, subject, htmlBody: html },
+  return sendEmailSafe({ to: toEmail, subject, htmlBody: html },
     'Reviewer Invitation Reminder L' + level + ': ' + msVer + ' to ' + toName);
 }
 
@@ -353,6 +394,6 @@ function sendReviewerSubmissionReminderEmail(
     footerHtml:  settings.mailFooter || ''
   });
 
-  sendEmailSafe({ to: toEmail, subject, htmlBody: html },
+  return sendEmailSafe({ to: toEmail, subject, htmlBody: html },
     'Reviewer Submission Reminder L' + level + ': ' + msVer + ' to ' + toName);
 }
