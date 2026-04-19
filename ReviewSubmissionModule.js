@@ -149,7 +149,7 @@ function sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId)
 
   const webAppUrl = ScriptApp.getService().getUrl();
   const recommendationLink = msData.editorKey
-    ? webAppUrl + '?editorKey=' + msData.editorKey
+    ? webAppUrl + '?editorKey=' + msData.editorKey + '&openReviews=1'
     : webAppUrl;
 
   const paperTitle = [msData.TitleJP, msData.TitleEN].filter(Boolean).join(' / ');

@@ -53,6 +53,9 @@ function doGet(e) {
   template.isTestMode = (testParam === 'true') ? 'true' : 'false';
   console.log('isTestMode template variable:', template.isTestMode);
 
+  // 査読アコーディオンを初期展開するか（査読完了通知メールからのリンクで使用）
+  template.openReviews = (e.parameter.openReviews === '1') ? 'true' : 'false';
+
   // ロールの判定
   try {
     if (reviewKey) {

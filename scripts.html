@@ -641,6 +641,12 @@ function renderEditorView(container) {
         </div>
         ${buildEditorRecommendationForm(ms)}
       </div>`;
+
+    // ?openReviews=1（査読完了通知メールからの遷移）の場合、提出済み査読を自動展開
+    if (typeof OPEN_REVIEWS !== 'undefined' && OPEN_REVIEWS) {
+      const submitted = (ms._reviewerList || []).filter(r => r.Received_At);
+      submitted.forEach(r => { try { toggleEditorReviewCard(r.reviewKey); } catch(e) {} });
+    }
   };
   const _edp = _consumePreloadedData();
   if (_edp !== null) { _handleEditor(_edp); return; }
@@ -1226,7 +1232,6 @@ function buildEditorReportLinksPanel(editorList, decisionSent, allowDocEdit, ms)
   for (var i = 0; i < reported.length; i++) {
     var e = reported[i];
     if (e.reportPdfUrl)        items.push(linkDiv(e.reportPdfUrl, '#2563eb', '📄 レポート（PDF） / Report (PDF)'));
-    if (e.reportWordUrl)       items.push(linkDiv(e.reportWordUrl, '#2563eb', '📝 オープンコメント集（Word） / Open Comments (Word)'));
     if (e.reportGoogleDocId && !decisionSent && allowDocEdit) {
       items.push(linkDiv('https://docs.google.com/document/d/' + e.reportGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
       items.push(
@@ -1242,7 +1247,6 @@ function buildEditorReportLinksPanel(editorList, decisionSent, allowDocEdit, ms)
   // 受理済み再投稿フロー（ME 直行ルート）：担当編集者レポートが存在しない場合、
   // 編集幹事が作成した Open-Comments Doc/Word を表示する。
   if (reported.length === 0 && ms) {
-    if (ms.meCommentWordUrl) items.push(linkDiv(ms.meCommentWordUrl, '#2563eb', '📝 オープンコメント集（Word） / Open Comments (Word)'));
     if (ms.meCommentGoogleDocId && !decisionSent && allowDocEdit) {
       items.push(linkDiv('https://docs.google.com/document/d/' + ms.meCommentGoogleDocId + '/edit', '#059669', '✏️ オープンコメント集をGoogle Docsで編集 / Edit Open Comments in Google Docs'));
       items.push(

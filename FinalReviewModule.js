@@ -207,7 +207,6 @@ function apiEicFinalAction(data) {
     }
 
     _sendFinalRouteAToAuthor(msData, data, eicFileUrl, settings, ssId);
-    _notifyManagingEditorOfEicRoute(msData, 'a', data.eicAuthorComment, data.eicProductionComment, data.decision || '', settings, ssId);
 
   } else if (route === 'b') {
     // ルートb: 印刷担当者に送付、ステータスを in_production へ
@@ -217,7 +216,6 @@ function apiEicFinalAction(data) {
     });
     _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings);
     _notifyAuthorOfAcceptance(msData, data, settings, ssId);
-    _notifyManagingEditorOfEicRoute(msData, 'b', data.eicAuthorComment, data.eicProductionComment, data.decision || '', settings, ssId);
 
   } else if (route === 'c') {
     // ルートc: 担当編集者に差し戻し（再判定依頼）
@@ -231,7 +229,6 @@ function apiEicFinalAction(data) {
       'managingEditorSentAt':          ''
     });
     _sendFinalRouteCToEditor(msData, data, eicFileUrl, settings, ssId);
-    _notifyManagingEditorOfEicRoute(msData, 'c', data.eicAuthorComment, data.eicProductionComment, data.decision || '', settings, ssId);
   }
 
   writeLog('EIC Final Action: ' + (msData.MsVer || '') + ' - Route: ' + route);
@@ -321,9 +318,9 @@ function createManagingEditorOpenCommentsDoc(msData, data, settings) {
   body.appendParagraph('');
   var introText =
     'このたびは修正版をご提出いただきありがとうございます。' +
-    '受理内定後の修正稿として、以下の編集幹事のコメントをお伝えいたします。\n\n' +
+    '受理内定後の修正稿として、以下の編集幹事と編集委員長のコメントをお伝えいたします。\n\n' +
     'Thank you for submitting your revised manuscript. ' +
-    'As the comments for this provisionally accepted revision, please find the Managing Editor\'s comments below.';
+    'As the comments for this provisionally accepted revision, please find the Managing Editor\'s and Editor-in-Chief\'s comments below.';
   var introPara = body.appendParagraph(introText);
   introPara.setAttributes(styleBody);
   introPara.setSpacingAfter(12);
@@ -836,83 +833,6 @@ function _sendFinalRouteCToEditor(msData, data, eicFileUrl, settings, ssId) {
     subject: '[' + settings.Journal_Name + '] 再判定依頼 / Re-evaluation Request: ' + (msData.MsVer || ''),
     htmlBody: html
   }, 'Final Route C (to Editor): ' + (msData.MsVer || ''));
-}
-
-/**
- * 委員長がどのルートに回したかを編集幹事へ通知
- */
-function _notifyManagingEditorOfEicRoute(msData, route, eicAuthorComment, eicProductionComment, decision, settings, ssId) {
-  if (!settings.managingEditorEmail) {
-    Logger.log('_notifyManagingEditorOfEicRoute: managingEditorEmail 未設定のためスキップ');
-    return;
-  }
-
-  // 判定ラベル（decision が指定されている場合はその値を、なければルート説明を使用）
-  var routeLabels = {
-    a: 'Returned to Author (Route A)',
-    b: 'Sent to Production (Route B)',
-    c: 'Returned to Editor for Re-evaluation (Route C)'
-  };
-  var decisionLabel = decision || routeLabels[route] || route;
-
-  // Decisions シートの Mail text を取得（decision がある場合のみ）
-  var mailTextHtml = '';
-  if (decision && ssId) {
-    try {
-      var dt = getDecisionTemplates(ssId, decision);
-      if (dt && dt.mailText) {
-        var replacements = {
-          'authorName':         msData.CA_Name              || '',
-          'englishTitle':       msData.TitleEN               || '',
-          'Journal_Name':       settings.Journal_Name        || '',
-          'Resubmittion_Limit': settings.Resubmittion_Limit  || '8 weeks',
-          'manuscriptID':       msData.MsVer                 || '',
-          'Editor_Name':        settings.Editor_Name         || 'Editor-in-Chief',
-          'dueDate':            '',
-          'submissionLink':     ScriptApp.getService().getUrl() + '?key=' + (msData.key || ''),
-          'formlink':           ScriptApp.getService().getUrl() + '?key=' + (msData.key || '')
-        };
-        var mailText = replaceDecisionPlaceholders(dt.mailText, replacements);
-        mailTextHtml =
-          '<div style="margin:20px 0;">' +
-            '<p style="margin:0 0 8px; font-weight:bold; color:#475569; font-size:13px;">▼ 著者に送付したメール本文 / Email text sent to author:</p>' +
-            '<div style="background:#f1f5f9; padding:16px; border-radius:8px; font-size:14px; line-height:1.7; white-space:pre-wrap;">' +
-              mailText +
-            '</div>' +
-          '</div>';
-      }
-    } catch (e) {
-      Logger.log('_notifyManagingEditorOfEicRoute: Mail text 取得エラー: ' + e.message);
-    }
-  }
-
-  var bodyHtml =
-    '<p>The Editor-in-Chief has taken action on the following manuscript.</p>' +
-    '<p>編集委員長が以下の原稿に対してアクションを取りました。</p>' +
-    '<table style="width:100%; font-size:14px; border-collapse:collapse; margin:20px 0;">' +
-      '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee; width:30%;">原稿番号 / MS ID</th>' +
-          '<td style="padding:8px; border-bottom:1px solid #eee;">' + escHtml(msData.MsVer || '') + '</td></tr>' +
-      '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">判定 / デシジョン</th>' +
-          '<td style="padding:8px; border-bottom:1px solid #eee; font-weight:bold;">' + escHtml(decisionLabel) + '</td></tr>' +
-      (eicAuthorComment ? '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">委員長コメント（著者宛） / EIC\'s Comment (for Author)</th>' +
-          '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(eicAuthorComment) + '</td></tr>' : '') +
-      (eicProductionComment ? '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">委員長コメント（印刷担当者宛） / EIC\'s Comment (for Production)</th>' +
-          '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(eicProductionComment) + '</td></tr>' : '') +
-    '</table>' +
-    mailTextHtml;
-
-  var html = renderRichEmail({
-    journalName: settings.Journal_Name,
-    greeting: '編集幹事 殿 / Dear Managing Editor,',
-    bodyHtml: bodyHtml,
-    footerHtml: settings.mailFooter || ''
-  });
-
-  sendEmailSafe({
-    to: settings.managingEditorEmail,
-    subject: '[' + settings.Journal_Name + '] 委員長アクション通知 / EIC Action: ' + escHtml(decisionLabel) + ' (' + (msData.MsVer || '') + ')',
-    htmlBody: html
-  }, 'EIC Route Notification to Managing Editor: ' + (msData.MsVer || ''));
 }
 
 /**
