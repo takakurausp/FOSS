@@ -110,6 +110,71 @@ function enrichWithFolderInfo(msData, ssId) {
 }
 
 /**
+ * 受理内定後の再投稿（Route 2: ME 直行ルート）における「前回ラウンド」のデータを構築する。
+ * 当ラウンドに査読者・担当編集者が存在しない Route 2 で、ME・EIC ダッシュボードに
+ * 直前ラウンドの査読者／担当編集者／編集幹事／編集委員長のコメント・添付ファイルを表示するため。
+ *
+ * 判定: Ver_No > 1 かつ 直前バージョンの accepted === 'yes' なら Route 2。
+ * それ以外（通常ルートや初回投稿）は null を返す。
+ */
+function buildPrevRoundForRoute2(ssId, msData, dateFormatter) {
+  const currentVerNo = Number(msData.Ver_No || 1);
+  if (currentVerNo <= 1) return null;
+
+  const msId = String(msData.MS_ID || '').trim();
+  if (!msId) return null;
+
+  const allVersions = findAllRecordsByKey(ssId, MANUSCRIPTS_SHEET_NAME, 'MS_ID', msId);
+  const prevVersion = allVersions.find(v => Number(v.Ver_No || 0) === currentVerNo - 1);
+  if (!prevVersion) return null;
+
+  if (String(prevVersion.accepted || '').trim().toLowerCase() !== 'yes') return null;
+
+  const prevMsVer = String(prevVersion.MsVer || '').trim();
+  const prevReviewLogs = findAllRecordsByKey(ssId, REVIEW_LOG_SHEET_NAME, 'MsVer', prevMsVer);
+  const prevEditorLogs = findAllRecordsByKey(ssId, EDITOR_LOG_SHEET_NAME, 'MsVer', prevMsVer);
+
+  return {
+    msVer: prevMsVer,
+    verNo: Number(prevVersion.Ver_No || 0),
+    reviewerList: buildReviewerList(prevReviewLogs, dateFormatter),
+    editorList: prevEditorLogs.map(log => ({
+      Editor_Name:                String(log.Editor_Name                || '').trim(),
+      Editor_Email:               String(log.Editor_Email               || '').trim(),
+      edtOk:                      String(log.edtOk                      || '').trim(),
+      Ask_At:                     dateFormatter(log.Ask_At),
+      Answer_At:                  dateFormatter(log.Answer_At),
+      Score:                      String(log.Score                      || '').trim(),
+      Message:                    String(log.Message                    || '').trim(),
+      ConfidentialMessage:        String(log.ConfidentialMessage        || '').trim(),
+      reportPdfUrl:               String(log.reportPdfUrl               || '').trim(),
+      reportWordUrl:              String(log.reportWordUrl              || '').trim(),
+      reportFolderUrl:            String(log.reportFolderUrl            || '').trim(),
+      reportAttachmentsFolderUrl: String(log.reportAttachmentsFolderUrl || '').trim(),
+      reportGoogleDocId:          String(log.reportGoogleDocId          || '').trim(),
+      reportCommentPdfUrl:        String(log.reportCommentPdfUrl        || '').trim()
+    })),
+    me: {
+      authorComment:   String(prevVersion.managingEditorAuthorComment   || '').trim(),
+      internalComment: String(prevVersion.managingEditorInternalComment || '').trim(),
+      fileUrl:         String(prevVersion.managingEditorFileUrl         || '').trim(),
+      sentAt:          dateFormatter(prevVersion.managingEditorSentAt   || '')
+    },
+    eic: (function() {
+      // 最終確認ルート (FinalReviewModule) で書かれたフィールドを優先し、
+      // 空なら accept-with-resubmit (FeedbackModule.apiSubmitFeedback) で書かれたフィールドにフォールバック
+      const fileUrlRaw = String(prevVersion.eicFinalFileUrl || prevVersion.resultFolderUrl || '').trim();
+      return {
+        authorComment:     String(prevVersion.eicFinalComment  || prevVersion.openComments || '').trim(),
+        productionComment: String(prevVersion.eicProductionComment || '').trim(),
+        fileUrl:           (fileUrlRaw === 'nofile') ? '' : fileUrlRaw,
+        decision:          String(prevVersion.eicFinalDecision || prevVersion.score || '').trim()
+      };
+    })()
+  };
+}
+
+/**
  * 査読者リストを構築する共通関数
  */
 function buildReviewerList(reviewLogs, dateFormatter) {
@@ -378,7 +443,10 @@ function getEicManuscriptData(ssId, key) {
       }
     }
   }
-  
+
+  // 受理内定後の再投稿（Route 2: ME 直行ルート）の場合、前回ラウンドのデータを付加
+  msData._prevRoundData = buildPrevRoundForRoute2(ssId, msData, eicFmt);
+
   return msData;
 }
 
@@ -621,6 +689,9 @@ function getManagingEditorManuscriptData(ssId, managingEditorKey) {
 
   // 査読者リスト（コメント含む）
   msData._reviewerList = buildReviewerList(reviewLogs, fmt);
+
+  // 受理内定後の再投稿（Route 2: ME 直行ルート）の場合、前回ラウンドのデータを付加
+  msData._prevRoundData = buildPrevRoundForRoute2(ssId, msData, fmt);
 
   return msData;
 }

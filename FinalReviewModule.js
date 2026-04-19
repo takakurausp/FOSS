@@ -507,7 +507,11 @@ function _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportP
           '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(data.authorComment || '(なし / None)') + '</td></tr>' +
       '<tr><th style="text-align:left; padding:8px; border-bottom:1px solid #eee;">内部用コメント<br><span style="font-size:0.85em;font-weight:normal;">Internal Comment</span></th>' +
           '<td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">' + escHtml(data.internalComment || '(なし / None)') + '</td></tr>' +
-    '</table>';
+    '</table>' +
+    '<div style="margin:20px 0; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; color:#475569; line-height:1.7;">' +
+      '📋 最終確認レポート（PDF）および編集幹事のコメント・添付ファイルの詳細は、下のボタンから編集委員長ダッシュボードにアクセスしてご確認ください。<br>' +
+      '<span style="color:#64748b;">For the final review report (PDF) and the managing editor\'s comments and attached files, please access the Editor-in-Chief dashboard using the button below.</span>' +
+    '</div>';
 
   var html = renderRichEmail({
     journalName: settings.Journal_Name,

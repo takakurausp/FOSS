@@ -517,6 +517,9 @@ function renderAuthorView(container) {
               ${buildMeEditorPanel(ms._editorList || [])}
               ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.eicFinalDecision), undefined, ms)}
 
+              <!-- 受理内定後の再投稿（Route 2）の場合のみ表示: 前回ラウンドの記録 -->
+              ${buildPrevRoundPanel(ms._prevRoundData)}
+
               <!-- 編集幹事フィードバック -->
               <div style="margin-top:1.5rem; padding:1.25rem; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
                 <h4 style="margin:0 0 1rem; font-size:1rem; font-weight:700; color:#1e293b;">編集幹事からのフィードバック / Managing Editor's Feedback</h4>
@@ -1267,6 +1270,67 @@ function buildEditorReportLinksPanel(editorList, decisionSent, allowDocEdit, ms)
     '<\/div>';
 }
 
+/**
+ * 受理内定後の再投稿（Route 2: ME 直行ルート）における前回ラウンドの記録パネル。
+ * ME・EIC ダッシュボードで使用。当ラウンドに査読者・担当編集者が存在しないため、
+ * 前回ラウンドの査読者／担当編集者／編集幹事／編集委員長の記録を一括表示する。
+ */
+function buildPrevRoundPanel(prevRoundData) {
+  if (!prevRoundData) return '';
+
+  const ev = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  const me = prevRoundData.me || {};
+  const eic = prevRoundData.eic || {};
+
+  const meBlock = (me.authorComment || me.internalComment || me.fileUrl) ? `
+    <div style="margin-top:1rem; padding:1rem; background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px;">
+      <h5 style="margin:0 0 0.6rem; font-size:0.9rem; color:#075985;">📝 前回ラウンドの編集幹事コメント / Previous Round — Managing Editor</h5>
+      ${me.authorComment ? `
+        <div style="margin-bottom:0.6rem;">
+          <p style="margin:0 0 0.25rem; font-size:0.78rem; font-weight:700; color:#0369a1;">著者宛コメント / For Author</p>
+          <div style="white-space:pre-wrap; font-size:0.875rem; color:#1e293b; padding:0.5rem 0.75rem; background:#fff; border-radius:4px;">${ev(me.authorComment)}</div>
+        </div>` : ''}
+      ${me.internalComment ? `
+        <div style="margin-bottom:0.6rem;">
+          <p style="margin:0 0 0.25rem; font-size:0.78rem; font-weight:700; color:#0369a1;">委員長宛・内部コメント / Internal (for EIC)</p>
+          <div style="white-space:pre-wrap; font-size:0.875rem; color:#1e293b; padding:0.5rem 0.75rem; background:#fff; border-radius:4px;">${ev(me.internalComment)}</div>
+        </div>` : ''}
+      ${me.fileUrl ? `<div><a href="${ev(me.fileUrl)}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 編集幹事の添付ファイルフォルダ / ME's Attached Files Folder</a></div>` : ''}
+    </div>` : '';
+
+  const eicBlock = (eic.authorComment || eic.productionComment || eic.fileUrl || eic.decision) ? `
+    <div style="margin-top:1rem; padding:1rem; background:#fef3c7; border:1px solid #fcd34d; border-radius:8px;">
+      <h5 style="margin:0 0 0.6rem; font-size:0.9rem; color:#92400e;">📝 前回ラウンドの編集委員長判定 / Previous Round — Editor-in-Chief</h5>
+      ${eic.decision ? `<p style="margin:0 0 0.5rem; font-size:0.85rem;"><strong>判定 / Decision:</strong> ${ev(eic.decision)}</p>` : ''}
+      ${eic.authorComment ? `
+        <div style="margin-bottom:0.6rem;">
+          <p style="margin:0 0 0.25rem; font-size:0.78rem; font-weight:700; color:#92400e;">著者宛コメント / For Author</p>
+          <div style="white-space:pre-wrap; font-size:0.875rem; color:#1e293b; padding:0.5rem 0.75rem; background:#fff; border-radius:4px;">${ev(eic.authorComment)}</div>
+        </div>` : ''}
+      ${eic.productionComment ? `
+        <div style="margin-bottom:0.6rem;">
+          <p style="margin:0 0 0.25rem; font-size:0.78rem; font-weight:700; color:#92400e;">印刷担当者宛コメント / For Production</p>
+          <div style="white-space:pre-wrap; font-size:0.875rem; color:#1e293b; padding:0.5rem 0.75rem; background:#fff; border-radius:4px;">${ev(eic.productionComment)}</div>
+        </div>` : ''}
+      ${eic.fileUrl ? `<div><a href="${ev(eic.fileUrl)}" target="_blank" style="font-size:0.85rem; color:#2563eb; text-decoration:none;">📁 編集委員長の添付ファイルフォルダ / EIC's Attached Files Folder</a></div>` : ''}
+    </div>` : '';
+
+  return `
+    <div style="margin-top:2rem; padding:1.25rem; background:#f8fafc; border:2px solid #cbd5e1; border-radius:10px;">
+      <h3 style="margin:0 0 0.4rem; font-size:1.05rem; color:#1e293b;">🗂 前回ラウンドの記録 / Previous Round Records</h3>
+      <p style="margin:0 0 1rem; font-size:0.85rem; color:#64748b;">
+        受理内定後の再投稿のため、前回ラウンド（${ev(prevRoundData.msVer)}）における査読者・担当編集者・編集幹事・編集委員長のコメントと添付ファイルを下に表示しています。<br>
+        <span style="color:#94a3b8;">As this is a resubmission after provisional acceptance, the comments and attachments from reviewers, the handling editor, the managing editor, and the EIC in the previous round (${ev(prevRoundData.msVer)}) are shown below.</span>
+      </p>
+      ${buildEditorReviewResultsPanel(prevRoundData.reviewerList || [], true)}
+      ${buildMeEditorPanel(prevRoundData.editorList || [])}
+      ${buildEditorReportLinksPanel(prevRoundData.editorList || [], true, false, null)}
+      ${meBlock}
+      ${eicBlock}
+    </div>`;
+}
+
 function buildMeEditorPanel(editorList) {
   if (!editorList || editorList.length === 0) return '';
 
@@ -1434,6 +1498,7 @@ function renderManagingEditorView(container) {
         ${buildEditorReviewResultsPanel(ms._reviewerList || [])}
         ${buildMeEditorPanel(ms._editorList || [])}
         ${buildEditorReportLinksPanel(ms._editorList || [], !!(ms.sentBackAt || ms.eicFinalDecision), false, ms)}
+        ${buildPrevRoundPanel(ms._prevRoundData)}
         ${formOrConfirm}
         ${_buildFinalDecisionBanner(ms)}
       </div>`;
