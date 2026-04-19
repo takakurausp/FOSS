@@ -3,9 +3,15 @@
  */
 
 function apiSubmitFeedback(data) {
+  if (data.files && data.files.length > 0) {
+    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
+    validateFileSafety(data.files, '添付ファイル / Attachments');
+    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
+  }
+
   const ssId = getSpreadsheetId();
   const settings = getSettings();
-  
+
   // 1. 原稿データを取得（著者キーまたは編集委員長専用キーで検索）
   let msData = getManuscriptData('author', data.msKey);
   if (!msData) msData = getManuscriptData('eic', data.msKey);

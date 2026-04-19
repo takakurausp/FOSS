@@ -3,9 +3,15 @@
  */
 
 function apiSubmitReview(data) {
+  if (data.files && data.files.length > 0) {
+    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
+    validateFileSafety(data.files, '添付ファイル / Attachments');
+    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
+  }
+
   const ssId = getSpreadsheetId();
   const settings = getSettings();
-  
+
   // 1. Get manuscript data using the reviewer key
   const msData = getManuscriptData('reviewer', data.reviewKey);
   if (!msData) throw new Error("Review record not found.");

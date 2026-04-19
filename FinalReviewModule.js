@@ -25,6 +25,12 @@
  * EIC はこの Google Docs を編集・確認したうえで PDF 化して著者に送付する。
  */
 function apiSubmitManagingEditorReview(data) {
+  if (data.files && data.files.length > 0) {
+    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
+    validateFileSafety(data.files, '添付ファイル / Attachments');
+    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
+  }
+
   const ssId = getSpreadsheetId();
   const settings = getSettings();
 
@@ -116,6 +122,12 @@ function apiSubmitManagingEditorReview(data) {
  * data: { eicKey, route ('a'|'b'|'c'), eicComment, files[] }
  */
 function apiEicFinalAction(data) {
+  if (data.files && data.files.length > 0) {
+    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
+    validateFileSafety(data.files, '添付ファイル / Attachments');
+    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
+  }
+
   const ssId = getSpreadsheetId();
   const settings = getSettings();
 

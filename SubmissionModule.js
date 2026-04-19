@@ -16,11 +16,13 @@ function apiSubmitSubmission(data) {
   if (data.ccEmails) validateEmailList(data.ccEmails, 'CC メールアドレス (ccEmails)');
   if (data.files && data.files.length > 0) {
     data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
+    validateFileSafety(data.files, '添付ファイル / Attachments');
+    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
   }
 
   const ssId = getSpreadsheetId();
   const settings = getSettings();
-  
+
   // 1. IDの発行
   const lastId = findMaxValue('ID', ssId);
   const nowId = lastId + 1;
@@ -64,6 +66,7 @@ function apiSubmitSubmission(data) {
   // submitted フォルダ: 投稿原稿を保存（担当編集者・査読者に共有）
   const folder = createSubmissionFolder(settings, thisManuscript);
   const fileNames = [];
+  const failedFiles = [];
   if (data.files && data.files.length > 0) {
     data.files.forEach(file => {
       try {
@@ -77,10 +80,17 @@ function apiSubmitSubmission(data) {
         Logger.log(`Saved file to submitted folder: ${file.name}`);
       } catch (fileErr) {
         Logger.log(`Failed to save file "${file.name}": ${fileErr}`);
+        failedFiles.push(file.name);
       }
     });
   } else {
     Logger.log(`New Submission ${msId}: data.files is empty or undefined`);
+  }
+  if (failedFiles.length > 0) {
+    throw new Error(
+      '以下のファイルの保存に失敗しました: ' + failedFiles.join(', ') +
+      ' / Failed to save the following files: ' + failedFiles.join(', ')
+    );
   }
   thisManuscript.submittedFiles = fileNames.join(', ');
 
@@ -218,6 +228,8 @@ function apiSubmitResubmission(data) {
   if (data.ccEmails)    validateEmailList(data.ccEmails, 'CC メールアドレス (ccEmails)');
   if (data.files && data.files.length > 0) {
     data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
+    validateFileSafety(data.files, '添付ファイル / Attachments');
+    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
   }
 
   const ssId = getSpreadsheetId();
@@ -278,6 +290,7 @@ function apiSubmitResubmission(data) {
   // submitted フォルダ: 投稿原稿を保存（担当編集者・査読者に共有）
   const folder = createSubmissionFolder(settings, thisManuscript);
   const fileNames = [];
+  const failedFiles = [];
   if (data.files && data.files.length > 0) {
     data.files.forEach(file => {
       try {
@@ -291,10 +304,17 @@ function apiSubmitResubmission(data) {
         Logger.log(`Saved file to submitted folder: ${file.name}`);
       } catch (fileErr) {
         Logger.log(`Failed to save file "${file.name}": ${fileErr}`);
+        failedFiles.push(file.name);
       }
     });
   } else {
     Logger.log(`Resubmission ${msVer}: data.files is empty or undefined`);
+  }
+  if (failedFiles.length > 0) {
+    throw new Error(
+      '以下のファイルの保存に失敗しました: ' + failedFiles.join(', ') +
+      ' / Failed to save the following files: ' + failedFiles.join(', ')
+    );
   }
   thisManuscript.submittedFiles = fileNames.join(', ');
 

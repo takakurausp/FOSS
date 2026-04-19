@@ -736,6 +736,10 @@ async function submitEditorRecommendation(editorKey) {
   const fileInput = document.getElementById('er-files');
   const files = [];
   if (fileInput && fileInput.files.length > 0) {
+    if (!checkAttachments(fileInput.files)) {
+      if (btn) { btn.disabled = false; btn.textContent = '推薦を送信 / Submit Recommendation'; btn.style.background = '#15803d'; btn.style.cursor = 'pointer'; }
+      return;
+    }
     for (const file of fileInput.files) {
       try {
         const base64 = await new Promise((resolve, reject) => {
@@ -1163,6 +1167,10 @@ async function submitRev(key) {
   const fileInput = document.getElementById('rfiles');
   const files = [];
   if (fileInput && fileInput.files.length > 0) {
+    if (!checkAttachments(fileInput.files)) {
+      if (btn) { btn.disabled = false; btn.textContent = '査読結果を送信 / Submit Review'; }
+      return;
+    }
     for (const file of fileInput.files) {
       try {
         const base64 = await new Promise((resolve, reject) => {
@@ -1519,6 +1527,10 @@ async function submitMeReview(key) {
   const fileInput = document.getElementById('mf');
   const files = [];
   if (fileInput && fileInput.files.length > 0) {
+    if (!checkAttachments(fileInput.files)) {
+      if (btn) { btn.disabled = false; btn.textContent = '委員長へ送信 / Send to EIC'; btn.style.background = '#1d4ed8'; btn.style.cursor = 'pointer'; }
+      return;
+    }
     for (const file of fileInput.files) {
       try {
         const base64 = await new Promise((resolve, reject) => {
@@ -1624,6 +1636,10 @@ async function submitEicFinalAction(route) {
   const fileInput = document.getElementById('eicFinalFiles');
   const files = [];
   if (fileInput && fileInput.files.length > 0) {
+    if (!checkAttachments(fileInput.files)) {
+      _restoreEicButtons(btnA, btnB);
+      return;
+    }
     for (const file of fileInput.files) {
       try {
         const base64 = await new Promise((resolve, reject) => {
@@ -1858,7 +1874,42 @@ function _renderResubmissionFormInner(container, ms, manuscriptTypes) {
     </div>`;
 }
 
-async function subResub(key) {
+function subResub(key) {
+  const fileInput = document.getElementById('rsb-files');
+  if (fileInput && fileInput.files.length > 0 && !checkAttachments(fileInput.files)) return;
+
+  const v = id => document.getElementById(id).value;
+  const paperTypeSel = document.getElementById('rsb-paperType');
+  const paperTypeLabel = paperTypeSel.options[paperTypeSel.selectedIndex] ? paperTypeSel.options[paperTypeSel.selectedIndex].textContent : v('rsb-paperType');
+
+  const rows = [
+    { label: '指摘事項への回答 / Response to Reviewers', value: v('rsb-response') },
+    { label: '責任著者氏名 / Corresponding Author',       value: v('rsb-authorName') },
+    { label: 'メールアドレス / Email',                    value: v('rsb-authorEmail') },
+    { label: '所属機関 / Affiliation',                    value: v('rsb-authorAffiliation') },
+    { label: '住所 / Postal Address',                     value: v('rsb-authorAddress') },
+    { label: '著者一覧(日) / Authors (JP)',               value: v('rsb-authorsJp') },
+    { label: '著者一覧(英) / Authors (EN)',               value: v('rsb-authorsEn') },
+    { label: '共著者メール / CC Emails',                  value: v('rsb-ccEmails') },
+    { label: '投稿種別 / Paper Type',                     value: paperTypeLabel },
+    { label: '論文タイトル(日) / Title (JP)',             value: v('rsb-titleJp') },
+    { label: '論文タイトル(英) / Title (EN)',             value: v('rsb-titleEn') },
+    { label: 'ランニングタイトル / Running Title',        value: v('rsb-runningTitle') },
+    { label: '要旨(日) / Abstract (JP)',                  value: v('rsb-abstractJp') },
+    { label: '要旨(英) / Abstract (EN)',                  value: v('rsb-abstractEn') },
+    { label: '英文校閲 / English Editing',                value: v('rsb-englishEditing') },
+    { label: '別刷り部数 / Reprint Copies',               value: v('rsb-reprintRequest') }
+  ];
+
+  showSubmissionPreview({
+    title: '再投稿内容の確認 / Confirm Resubmission',
+    rows: rows,
+    files: fileInput ? fileInput.files : [],
+    onConfirm: () => _doSubResub(key)
+  });
+}
+
+async function _doSubResub(key) {
   const btn = document.getElementById('rsb');
   const originalText = btn.textContent;
   btn.disabled = true;
@@ -1933,7 +1984,165 @@ function toggleAbstract(id) {
   if(d.style.display==='none'){ d.style.display='block'; i.textContent='▼'; l.textContent='要旨を隠す / Hide Abstract'; }else{ d.style.display='none'; i.textContent='▶'; l.textContent='要旨を見る / View Abstract'; }
 }
 
+// 危険な拡張子のブロックリスト
+// サーバ側 ValidationUtils.js の DANGEROUS_FILE_EXTENSIONS と必ず一致させること。
+const DANGEROUS_FILE_EXTENSIONS_CLIENT = [
+  'exe','com','bat','cmd','msi','msp','mst','scr','pif',
+  'dll','sys','drv','ocx','cpl','reg','msc','gadget','scf','lnk',
+  'vbs','vbe','jse','wsf','wsh','ws','ps1','ps2','psc1','psc2','hta',
+  'app','dmg','pkg','deb','rpm','run',
+  'jar','class',
+  'iso','img','vhd','vhdx',
+  'docm','dotm','xlsm','xltm','xlsb','xlam','pptm','potm','ppam','sldm'
+];
+
+function checkAttachmentSafety(fileList) {
+  if (!fileList || fileList.length === 0) return true;
+  const blocked = [];
+  for (let i = 0; i < fileList.length; i++) {
+    const name = String(fileList[i].name || '');
+    const dot = name.lastIndexOf('.');
+    if (dot < 0 || dot === name.length - 1) continue;
+    const ext = name.substring(dot + 1).toLowerCase().trim();
+    if (DANGEROUS_FILE_EXTENSIONS_CLIENT.indexOf(ext) !== -1) {
+      blocked.push(name);
+    }
+  }
+  if (blocked.length > 0) {
+    alert(
+      '以下のファイルはセキュリティ上の理由でアップロードできません:\n' +
+      '  ' + blocked.join('\n  ') + '\n\n' +
+      '実行ファイル（.exe など）やマクロ入り Office ファイル（.docm, .xlsm など）は受け付けていません。\n' +
+      '原稿や図表として提出する場合は、マクロを除去した形式（.docx, .xlsx など）に変換してください。\n\n' +
+      '---\n' +
+      'The following files cannot be uploaded for security reasons:\n' +
+      '  ' + blocked.join('\n  ') + '\n\n' +
+      'Executable files (e.g. .exe) and macro-enabled Office files (e.g. .docm, .xlsm) are not accepted.\n' +
+      'For manuscripts and figures, please save in macro-free formats (.docx, .xlsx, etc.).'
+    );
+    return false;
+  }
+  return true;
+}
+
+// 添付ファイル合計サイズの上限（30 MB）
+// サーバ側 ValidationUtils.js の MAX_ATTACHMENT_BYTES と必ず一致させること。
+const MAX_ATTACHMENT_BYTES_CLIENT = 30 * 1024 * 1024;
+
+// 安全性チェックとサイズチェックをまとめて実行。両方クリアした場合のみ true。
+function checkAttachments(fileList) {
+  if (!checkAttachmentSafety(fileList)) return false;
+  if (!checkAttachmentTotalSize(fileList)) return false;
+  return true;
+}
+
+function checkAttachmentTotalSize(fileList) {
+  if (!fileList || fileList.length === 0) return true;
+  let total = 0;
+  for (let i = 0; i < fileList.length; i++) total += fileList[i].size;
+  if (total > MAX_ATTACHMENT_BYTES_CLIENT) {
+    const totalMB = (total / 1024 / 1024).toFixed(1);
+    const limitMB = (MAX_ATTACHMENT_BYTES_CLIENT / 1024 / 1024).toFixed(0);
+    alert(
+      '添付ファイルの合計サイズが上限 (' + limitMB + ' MB) を超えています。\n' +
+      '現在の合計: ' + totalMB + ' MB\n\n' +
+      '以下のいずれかの対応をお願いします:\n' +
+      '  1. 図表ファイルのサイズを調整（圧縮・解像度低下など）してから再度投稿する\n' +
+      '  2. 図表を Google Drive に保存し、共有リンクを書き込んだファイルを代わりに添付する\n\n' +
+      '---\n' +
+      'The total size of attachments exceeds the limit (' + limitMB + ' MB).\n' +
+      'Current total: ' + totalMB + ' MB\n\n' +
+      'Please take one of the following actions:\n' +
+      '  1. Reduce file sizes (compress / lower resolution) and resubmit.\n' +
+      '  2. Upload figures to Google Drive and attach a file containing the shared links instead.'
+    );
+    return false;
+  }
+  return true;
+}
+
 function toBase64(file) { return new Promise((resolve, reject) => { const r = new FileReader(); r.readAsDataURL(file); r.onload = () => resolve(r.result); r.onerror = e => reject(e); }); }
+
+/**
+ * 投稿内容の確認モーダル。送信ボタンを押した直後に呼び、
+ * ユーザーが「送信する」を選んだ場合のみ onConfirm が走る。
+ * @param {Object} opts
+ * @param {string} opts.title
+ * @param {Array<{label:string, value:string}>} opts.rows  項目名と値のペア
+ * @param {FileList|Array} opts.files                       添付ファイル一覧
+ * @param {Function} opts.onConfirm                         「送信する」を押したときの処理
+ * @param {Function=} opts.onCancel                         「編集に戻る」を押したときの処理（任意）
+ */
+function showSubmissionPreview(opts) {
+  const _esc = s => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const _bytes = n => {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(2) + ' MB';
+  };
+
+  const rowsHtml = (opts.rows || []).map(r => {
+    const empty = (r.value == null || String(r.value).trim() === '');
+    const cell = empty
+      ? '<span style="color:#94a3b8">(未入力 / not set)</span>'
+      : '<span style="white-space:pre-wrap;word-break:break-word">' + _esc(r.value) + '</span>';
+    return '<tr style="border-bottom:1px solid #e2e8f0">' +
+      '<th style="padding:0.5rem 0.85rem;text-align:left;background:#f8fafc;width:32%;vertical-align:top;font-weight:600;color:#334155;font-size:0.85rem">' + _esc(r.label) + '</th>' +
+      '<td style="padding:0.5rem 0.85rem;vertical-align:top">' + cell + '</td>' +
+      '</tr>';
+  }).join('');
+
+  let filesHtml;
+  const flist = opts.files || [];
+  if (flist.length === 0) {
+    filesHtml = '<p style="margin:0;color:#b91c1c;background:white;border-radius:8px;padding:0.75rem 1rem;font-size:0.88rem">⚠️ 添付ファイルがありません / No files attached</p>';
+  } else {
+    let total = 0;
+    const items = [];
+    for (let i = 0; i < flist.length; i++) {
+      total += flist[i].size;
+      items.push('<li style="margin:0.15rem 0">' + _esc(flist[i].name) +
+        ' <span style="color:#64748b;font-size:0.82rem">(' + _bytes(flist[i].size) + ')</span></li>');
+    }
+    filesHtml =
+      '<ul style="background:white;border-radius:8px;padding:0.65rem 1rem 0.65rem 2rem;margin:0;font-size:0.88rem">' +
+      items.join('') + '</ul>' +
+      '<p style="margin:0.45rem 0 0;font-size:0.82rem;color:#64748b">合計 / Total: ' +
+      _bytes(total) + ' (' + flist.length + ' ファイル / files)</p>';
+  }
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = '_submissionPreviewModal';
+  modal.innerHTML =
+    '<div class="modal-content">' +
+      '<div class="modal-header">' +
+        '<h2 style="margin:0;font-size:1.1rem">' + _esc(opts.title || '投稿内容の確認 / Confirm Submission') + '</h2>' +
+      '</div>' +
+      '<div class="modal-body">' +
+        '<p style="margin:0 0 1rem;color:#475569;font-size:0.9rem;line-height:1.6">' +
+          '以下の内容で送信します。内容に誤りがないかご確認ください。<br>' +
+          '<span style="color:#64748b">Please review the following details before submitting.</span>' +
+        '</p>' +
+        '<table style="width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden">' +
+          rowsHtml +
+        '</table>' +
+        '<h4 style="margin:1.25rem 0 0.5rem;font-size:0.95rem">添付ファイル / Attachments</h4>' +
+        filesHtml +
+      '</div>' +
+      '<div class="modal-footer">' +
+        '<button type="button" id="_spmCancel" style="background:#e2e8f0;color:#1e293b">編集に戻る / Back to Edit</button>' +
+        '<button type="button" id="_spmOk" style="background:var(--success);color:white">この内容で送信する / Submit</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  const cleanup = () => { if (modal.parentNode) modal.parentNode.removeChild(modal); };
+  document.getElementById('_spmCancel').onclick = () => { cleanup(); if (opts.onCancel) opts.onCancel(); };
+  document.getElementById('_spmOk').onclick     = () => { cleanup(); if (opts.onConfirm) opts.onConfirm(); };
+}
 
 async function submitFeedback(k) {
   const scoreEl = document.getElementById('finalScore');
@@ -1969,6 +2178,10 @@ async function submitFeedback(k) {
   const fileInput = document.getElementById('eicFeedbackFiles');
   const files = [];
   if (fileInput && fileInput.files.length > 0) {
+    if (!checkAttachments(fileInput.files)) {
+      if (btn) { btn.disabled = false; btn.textContent = '判定通知を送信 / Send Decision'; btn.style.background = '#d97706'; btn.style.cursor = 'pointer'; }
+      return;
+    }
     for (const file of fileInput.files) {
       try {
         const base64 = await new Promise((resolve, reject) => {
@@ -2268,9 +2481,47 @@ function renderNewAuthorForm(container) {
 }
 
 /**
- * 新規投稿の送信処理
+ * 新規投稿の送信処理 — まず確認モーダルを表示し、ユーザーの承認後に実送信する。
  */
-async function submitSubmission() {
+function submitSubmission() {
+  const fileInput = document.getElementById('manuscriptFile');
+  if (fileInput.files.length > 0 && !checkAttachments(fileInput.files)) return;
+
+  const v = id => document.getElementById(id).value;
+  const paperTypeSel = document.getElementById('paperType');
+  const paperTypeLabel = paperTypeSel.options[paperTypeSel.selectedIndex] ? paperTypeSel.options[paperTypeSel.selectedIndex].textContent : v('paperType');
+
+  const rows = [
+    { label: '責任著者氏名 / Corresponding Author', value: v('authorName') },
+    { label: 'メールアドレス / Email',              value: v('authorEmail') },
+    { label: '所属機関 / Affiliation',              value: v('authorAffiliation') },
+    { label: '住所 / Postal Address',               value: v('authorAddress') },
+    { label: '著者一覧(日) / Authors (JP)',         value: v('authorsJp') },
+    { label: '著者一覧(英) / Authors (EN)',         value: v('authorsEn') },
+    { label: '共著者メール / CC Emails',            value: v('ccEmails') },
+    { label: '投稿種別 / Paper Type',               value: paperTypeLabel },
+    { label: '論文タイトル(日) / Title (JP)',       value: v('titleJp') },
+    { label: '論文タイトル(英) / Title (EN)',       value: v('titleEn') },
+    { label: 'ランニングタイトル / Running Title',  value: v('runningTitle') },
+    { label: '要旨(日) / Abstract (JP)',            value: v('abstractJp') },
+    { label: '要旨(英) / Abstract (EN)',            value: v('abstractEn') },
+    { label: 'カバーレター / Letter to Editor',     value: v('letterToEditor') },
+    { label: '英文校閲 / English Editing',          value: v('englishEditing') },
+    { label: '別刷り部数 / Reprint Copies',         value: v('reprintRequest') }
+  ];
+
+  showSubmissionPreview({
+    title: '投稿内容の確認 / Confirm Submission',
+    rows: rows,
+    files: fileInput.files,
+    onConfirm: () => _doSubmitSubmission()
+  });
+}
+
+/**
+ * 確認モーダルで「送信」を選んだ後の実処理。
+ */
+async function _doSubmitSubmission() {
   const btn = document.getElementById('submit-btn');
   const originalText = btn.textContent;
   btn.disabled = true;
@@ -2281,7 +2532,7 @@ async function submitSubmission() {
   try {
     const fileInput = document.getElementById('manuscriptFile');
     const files = [];
-    
+
     if (fileInput.files.length > 0) {
       for (let i = 0; i < fileInput.files.length; i++) {
         const file = fileInput.files[i];

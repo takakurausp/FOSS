@@ -4,6 +4,13 @@
 
 function apiSubmitRecommendation(data) {
   Logger.log('apiSubmitRecommendation: start. editorKey=' + data.editorKey + ' score=' + data.score + ' files=' + (data.files ? data.files.length : 0));
+
+  if (data.files && data.files.length > 0) {
+    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
+    validateFileSafety(data.files, '添付ファイル / Attachments');
+    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
+  }
+
   const ssId = getSpreadsheetId();
   const settings = getSettings();
 
