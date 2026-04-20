@@ -19,6 +19,21 @@ function apiSubmitRecommendation(data) {
   if (!msData) throw new Error("Editor record not found.");
   Logger.log('apiSubmitRecommendation: msData loaded. MsVer=' + msData.MsVer + ' MS_ID=' + msData.MS_ID);
 
+  // 承諾済み(edtOk='ok')かつ未提出の依頼からのみ推薦を受け付ける。
+  // （同じメールアドレスに新旧2通の招待が届いた場合など、
+  //   古い（辞退/取消済みの）URLから提出されると誤った行に書き込まれる事故を防止）
+  const edtOkStatus = String(msData.edtOk || '').trim();
+  if (edtOkStatus !== 'ok') {
+    throw new Error('この依頼は受諾されていないか、辞退・取消済みのため推薦を提出できません。'
+                  + '最新の依頼メールに記載のURLをご確認ください。\n'
+                  + 'Cannot submit: this editor assignment was not accepted, or has been declined/cancelled. '
+                  + 'Please use the URL in the most recent invitation email.');
+  }
+  if (String(msData.Received_At || '').trim() !== '') {
+    throw new Error('この推薦はすでに提出済みのため、再度の提出はできません。\n'
+                  + 'This recommendation has already been submitted.');
+  }
+
   const hexId = msData.MsVerRevHex;
   const msVer = msData.MsVer;
   const msId = msData.MS_ID;

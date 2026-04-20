@@ -614,16 +614,40 @@ function renderEditorView(container) {
     const div = document.getElementById('editor-content');
     if (!ms) { div.className = ''; div.innerHTML = '<p class="error">データが見つかりませんでした。ページを再読み込みしてください。</p>'; return; }
     div.className = '';
-    div.innerHTML = `
-      <div class="status-card">
-        ${buildProgressTimeline(ms._progressStatus)}
-        ${renderManuscriptHeader(ms)}
-        ${renderManuscriptInfoTable(ms, { showAuthors: true })}
-        ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
-        ${ms.Score ? '' : buildReviewMaterialsPanel(ms.folderUrl, ms._reviewMaterialsFolderUrl)}
-        ${buildPastReviewersPanel(ms._pastReviewersByRound || [])}
-        ${buildEditorReviewResultsPanel(ms._reviewerList || [])}
-        ${_buildFinalDecisionBanner(ms)}
+
+    // 状態に応じたアクションセクションの切り替え
+    // 1) 辞退済み(edtOk==='ng')        → 辞退通知バナー（査読者指名・推薦フォームは出さない）
+    // 2) 取消済み(edtOk==='cancelled') → 取消通知バナー
+    // 3) 受諾済み(edtOk==='ok')        → 通常の編集者ダッシュボード
+    // 4) 未回答(edtOk==='')            → 通常は doGet が招待応答フォームを表示するため到達しない想定。
+    //                                    フォールバックの案内を出す。
+    const edtOkState = String(ms.edtOk || '').trim();
+    let actionSection = '';
+    if (edtOkState === 'ng') {
+      actionSection = `
+        <div style="margin-top:1.5rem; padding:1.25rem; background:#fef2f2; border:2px solid #fca5a5; border-radius:8px;">
+          <h4 style="margin:0 0 0.75rem; color:#b91c1c;">🚫 この担当編集者依頼は辞退済みです / Assignment Declined</h4>
+          <p style="margin:0 0 0.5rem; font-size:0.9rem; color:#374151;">
+            このURLの依頼は以前に辞退されたため、編集者としての操作はできません。
+          </p>
+          <p style="margin:0; font-size:0.9rem; color:#374151;">
+            This editor assignment was previously declined and can no longer be used.
+            If you expected to edit this manuscript, please use the URL in the most recent invitation email.
+          </p>
+        </div>`;
+    } else if (edtOkState === 'cancelled') {
+      actionSection = `
+        <div style="margin-top:1.5rem; padding:1.25rem; background:#f1f5f9; border:2px solid #cbd5e1; border-radius:8px;">
+          <h4 style="margin:0 0 0.75rem; color:#475569;">⚠️ この担当編集者依頼は取り下げられました / Assignment Withdrawn</h4>
+          <p style="margin:0 0 0.5rem; font-size:0.9rem; color:#374151;">
+            この担当編集者の割当は編集委員長によって取り下げられたため、編集者としての操作はできません。
+          </p>
+          <p style="margin:0; font-size:0.9rem; color:#374151;">
+            This editor assignment has been withdrawn by the Editor-in-Chief and can no longer be used.
+          </p>
+        </div>`;
+    } else if (edtOkState === 'ok') {
+      actionSection = `
         <div style="margin-top:1.5rem; border-radius:8px; border:1px solid #e2e8f0; overflow:hidden;">
           <div onclick="toggleRevAssignPanel()" style="display:flex; align-items:center; justify-content:space-between; padding:0.85rem 1rem; background:#f8fafc; cursor:pointer; user-select:none;">
             <h4 style="margin:0; font-size:1rem;">査読者を指名 / Assign Reviewer</h4>
@@ -642,7 +666,31 @@ function renderEditorView(container) {
             <button id="rev-send-btn" onclick="assignRev('${ms.editorKey}')">招待を送る / Send Invitation</button>
           </div>
         </div>
-        ${buildEditorRecommendationForm(ms)}
+        ${buildEditorRecommendationForm(ms)}`;
+    } else {
+      // edtOk === '' : 未回答。通常は doGet 側で招待応答フォームが表示されるため
+      // ここに到達するのは想定外。フォールバックメッセージを表示。
+      actionSection = `
+        <div style="margin-top:1.5rem; padding:1.25rem; background:#fffbeb; border:2px solid #fcd34d; border-radius:8px;">
+          <h4 style="margin:0 0 0.75rem; color:#92400e;">📬 まずは担当依頼への回答をお願いします / Please Respond to the Assignment First</h4>
+          <p style="margin:0; font-size:0.9rem; color:#374151;">
+            この依頼にはまだ受諾/辞退の回答がありません。依頼メールに記載のURLから回答してください。<br>
+            This editor assignment has not yet been accepted or declined. Please respond from the URL in the invitation email.
+          </p>
+        </div>`;
+    }
+
+    div.innerHTML = `
+      <div class="status-card">
+        ${buildProgressTimeline(ms._progressStatus)}
+        ${renderManuscriptHeader(ms)}
+        ${renderManuscriptInfoTable(ms, { showAuthors: true })}
+        ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
+        ${(edtOkState === 'ok' && !ms.Score) ? buildReviewMaterialsPanel(ms.folderUrl, ms._reviewMaterialsFolderUrl) : ''}
+        ${edtOkState === 'ok' ? buildPastReviewersPanel(ms._pastReviewersByRound || []) : ''}
+        ${edtOkState === 'ok' ? buildEditorReviewResultsPanel(ms._reviewerList || []) : ''}
+        ${edtOkState === 'ok' ? _buildFinalDecisionBanner(ms) : ''}
+        ${actionSection}
       </div>`;
 
     // ?openReviews=1（査読完了通知メールからの遷移）の場合、提出済み査読を自動展開
@@ -1104,13 +1152,18 @@ function renderReviewerView(container) {
       const div = document.getElementById('reviewer-content');
       div.className = '';
       if (!ms) { div.innerHTML = '<p class="error">データが見つかりませんでした。リンクを確認してください。/ Record not found. Please check your link.</p>'; return; }
-      div.innerHTML = `<div class="status-card">
-        ${buildProgressTimeline(ms._progressStatus)}
-        ${renderManuscriptHeader(ms)}
-        ${renderManuscriptInfoTable(ms, { showAuthors: true, showDeadline: true })}
-        ${(ms.revOk === 'ok' && !ms.Received_At) ? buildReviewMaterialsPanel(ms.folderUrl, ms._reviewMaterialsFolderUrl) : ''}
-        ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
-        ${ms.Received_At ? `
+
+      // 状態に応じたメイン表示の切り替え
+      // 1) 既に査読結果を提出済み → 提出済パネル
+      // 2) 辞退済み(revOk==='ng')         → 辞退通知バナー（送信フォームは出さない）
+      // 3) 取消済み(revOk==='cancelled')  → 取消通知バナー
+      // 4) 受諾済み(revOk==='ok')かつ未提出 → 送信フォーム
+      // 5) 未回答(revOk==='') の場合は doGet が回答フォームを先に表示するため通常ここには来ないが、
+      //    フォールバックとして招待再表示リンクなどの案内を出す
+      const revOkState = String(ms.revOk || '').trim();
+      let mainSection = '';
+      if (ms.Received_At) {
+        mainSection = `
         <div style="margin-top:1.5rem; padding:1.25rem; background:#f0fdf4; border:2px solid #86efac; border-radius:8px;">
           <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem;">
             <h4 style="margin:0; color:#15803d;">✅ 査読結果受領済み / Review Submitted</h4>
@@ -1131,7 +1184,32 @@ function renderReviewerView(container) {
             </div>
           </div>
         </div>
-        ${_buildFinalDecisionBanner(ms)}` : `
+        ${_buildFinalDecisionBanner(ms)}`;
+      } else if (revOkState === 'ng') {
+        mainSection = `
+        <div style="margin-top:1.5rem; padding:1.25rem; background:#fef2f2; border:2px solid #fca5a5; border-radius:8px;">
+          <h4 style="margin:0 0 0.75rem; color:#b91c1c;">🚫 この招待は辞退済みです / Invitation Declined</h4>
+          <p style="margin:0 0 0.5rem; font-size:0.9rem; color:#374151;">
+            このURLの招待は以前に辞退されたため、査読結果を提出することはできません。
+          </p>
+          <p style="margin:0; font-size:0.9rem; color:#374151;">
+            This invitation was previously declined and can no longer be used to submit a review.
+            If you expected to review this manuscript, please use the URL in the most recent invitation email.
+          </p>
+        </div>`;
+      } else if (revOkState === 'cancelled') {
+        mainSection = `
+        <div style="margin-top:1.5rem; padding:1.25rem; background:#f1f5f9; border:2px solid #cbd5e1; border-radius:8px;">
+          <h4 style="margin:0 0 0.75rem; color:#475569;">⚠️ この招待は取り下げられました / Invitation Withdrawn</h4>
+          <p style="margin:0 0 0.5rem; font-size:0.9rem; color:#374151;">
+            この査読依頼は担当編集者によって取り下げられたため、結果を提出することはできません。
+          </p>
+          <p style="margin:0; font-size:0.9rem; color:#374151;">
+            This review invitation has been withdrawn by the responsible editor and can no longer be used.
+          </p>
+        </div>`;
+      } else if (revOkState === 'ok') {
+        mainSection = `
         <form onsubmit="event.preventDefault(); submitRev('${ms.reviewKey}');" style="margin-top:1.5rem;">
           <div class="form-group"><label>判定 / Score</label><select id="rs" required>${(ms._scoreOptions || ['Accept', 'Minor Revision', 'Major Revision', 'Reject']).map(o => `<option value="${o}">${o}</option>`).join('')}</select></div>
           <div class="form-group"><label>著者へのコメント / Comments for Author</label><textarea id="roc" rows="5" required placeholder="著者に開示されるコメントを入力してください / These comments will be shared with the author"></textarea></div>
@@ -1145,7 +1223,27 @@ function renderReviewerView(container) {
             <p style="font-size:0.8em; color:#64748b; margin-top:0.25rem;">審査票・コメントファイル等をアップロードできます。/ You can upload review sheets, annotated files, etc.</p>
           </div>
           <button type="submit">査読結果を送信 / Submit Review</button>
-        </form>`}
+        </form>`;
+      } else {
+        // revOk === '' : 未回答。通常は doGet 側で招待応答フォームが表示されるため
+        // ここに到達するのは想定外。フォールバックメッセージを表示。
+        mainSection = `
+        <div style="margin-top:1.5rem; padding:1.25rem; background:#fffbeb; border:2px solid #fcd34d; border-radius:8px;">
+          <h4 style="margin:0 0 0.75rem; color:#92400e;">📬 まずは招待への回答をお願いします / Please Respond to the Invitation First</h4>
+          <p style="margin:0; font-size:0.9rem; color:#374151;">
+            この依頼にはまだ受諾/辞退の回答がありません。依頼メールに記載のURLから回答してください。<br>
+            This invitation has not yet been accepted or declined. Please respond from the URL in the invitation email.
+          </p>
+        </div>`;
+      }
+
+      div.innerHTML = `<div class="status-card">
+        ${buildProgressTimeline(ms._progressStatus)}
+        ${renderManuscriptHeader(ms)}
+        ${renderManuscriptInfoTable(ms, { showAuthors: true, showDeadline: true })}
+        ${(revOkState === 'ok' && !ms.Received_At) ? buildReviewMaterialsPanel(ms.folderUrl, ms._reviewMaterialsFolderUrl) : ''}
+        ${renderCollapsibleAbstract(ms.AbstractJP, ms.AbstractEN)}
+        ${mainSection}
       </div>`;
   };
   const _rvp = _consumePreloadedData();

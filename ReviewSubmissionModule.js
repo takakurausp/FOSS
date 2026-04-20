@@ -15,7 +15,22 @@ function apiSubmitReview(data) {
   // 1. Get manuscript data using the reviewer key
   const msData = getManuscriptData('reviewer', data.reviewKey);
   if (!msData) throw new Error("Review record not found.");
-  
+
+  // 承諾済み(revOk='ok')かつ未提出の招待からのみ結果を受け付ける。
+  // （同じメールアドレスに新旧2通の招待が届いた場合など、
+  //   古い（辞退/取消済みの）URLから提出されると誤った行に書き込まれる事故を防止）
+  const revOkStatus = String(msData.revOk || '').trim();
+  if (revOkStatus !== 'ok') {
+    throw new Error('この招待は受諾されていないか、辞退・取消済みのため結果を提出できません。'
+                  + '最新の依頼メールに記載のURLをご確認ください。\n'
+                  + 'Cannot submit: this invitation was not accepted, or has been declined/cancelled. '
+                  + 'Please use the URL in the most recent invitation email.');
+  }
+  if (String(msData.Received_At || '').trim() !== '') {
+    throw new Error('この査読結果はすでに提出済みのため、再度の提出はできません。\n'
+                  + 'This review has already been submitted.');
+  }
+
   const hexId = msData.MsVerRevHex;
   const msVer = msData.MsVer;
   const msId = msData.MS_ID;

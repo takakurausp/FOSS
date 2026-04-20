@@ -471,7 +471,22 @@ function apiSubmitInvitationResponse(role, key, answer, message) {
   if (r === 'editor') {
     const editorLog = findRecordByKey(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', key);
     if (!editorLog) throw new Error('Editor record not found.');
-    
+
+    // 既に辞退・取消・受諾済みの招待に対する二重回答を防ぐ。
+    // （同じメールアドレスに新旧2通の招待が届いた場合など、
+    //   古いURLから再回答されると誤った行に書き込まれる事故を防止）
+    const existingEdtOk = String(editorLog.edtOk || '').trim();
+    if (existingEdtOk === 'ng' || existingEdtOk === 'cancelled') {
+      throw new Error('この招待はすでに辞退済みまたは取消済みのため、回答を受け付けできません。'
+                    + '最新の依頼メールに記載のURLをご確認ください。\n'
+                    + 'This invitation has already been declined or cancelled. '
+                    + 'Please use the URL in the most recent invitation email.');
+    }
+    if (existingEdtOk === 'ok') {
+      throw new Error('この招待はすでに受諾済みのため、再度の回答は受け付けできません。\n'
+                    + 'This invitation has already been accepted.');
+    }
+
     // 1. Logに記録
     const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', key, {
@@ -512,7 +527,22 @@ function apiSubmitInvitationResponse(role, key, answer, message) {
   } else if (r === 'reviewer') {
     const reviewLog = findRecordByKey(ssId, REVIEW_LOG_SHEET_NAME, 'reviewKey', key);
     if (!reviewLog) throw new Error('Reviewer record not found.');
-    
+
+    // 既に辞退・取消・受諾済みの招待に対する二重回答を防ぐ。
+    // （同じメールアドレスに新旧2通の招待が届いた場合など、
+    //   古いURLから再回答されると誤った行に書き込まれる事故を防止）
+    const existingRevOk = String(reviewLog.revOk || '').trim();
+    if (existingRevOk === 'ng' || existingRevOk === 'cancelled') {
+      throw new Error('この招待はすでに辞退済みまたは取消済みのため、回答を受け付けできません。'
+                    + '最新の依頼メールに記載のURLをご確認ください。\n'
+                    + 'This invitation has already been declined or cancelled. '
+                    + 'Please use the URL in the most recent invitation email.');
+    }
+    if (existingRevOk === 'ok') {
+      throw new Error('この招待はすでに受諾済みのため、再度の回答は受け付けできません。\n'
+                    + 'This invitation has already been accepted.');
+    }
+
     // 1. Logに記録
     const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
     updateLogCell(ssId, REVIEW_LOG_SHEET_NAME, 'reviewKey', key, {
