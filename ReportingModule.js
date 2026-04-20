@@ -107,9 +107,9 @@ function archiveMonthlyLogs() {
   const subject = `[${settings.Journal_Name}] 月次ログアーカイブ / Monthly Log Archive (${monthStr})`;
   const bodyHtml = `
     <p>Attached is the archived activity log for <strong>${monthStr}</strong>.</p>
-    <p>The original entries have been moved from the <strong>Log</strong> sheet to the <strong>Archive</strong> sheet.</p>
+    <p>The original entries have been moved from the <strong>Log</strong> sheet to the <strong>Log_archive</strong> sheet.</p>
     <hr style="border:none; border-top:1px solid #e2e8f0; margin: 20px 0;">
-    <p>${monthStr} 分の活動ログをアーカイブし、ZIP形式で送付いたします。対象のデータは Log シートから Archive シートへ移動済みです。</p>
+    <p>${monthStr} 分の活動ログをアーカイブし、ZIP形式で送付いたします。対象のデータは Log シートから Log_archive シートへ移動済みです。</p>
   `;
 
   const emailHtml = renderRichEmail({
@@ -126,16 +126,16 @@ function archiveMonthlyLogs() {
     attachments: [zipBlob]
   }, 'Monthly Log Archive');
 
-  // 5. Archiveシートへ移動
-  let archiveSheet = SpreadsheetApp.openById(ssId).getSheetByName(ARCHIVE_SHEET_NAME);
+  // 5. Log_archive シートへ移動（原稿アーカイブ用の Archive シートとは別管理）
+  let archiveSheet = SpreadsheetApp.openById(ssId).getSheetByName(LOG_ARCHIVE_SHEET_NAME);
   if (!archiveSheet) {
-    archiveSheet = SpreadsheetApp.openById(ssId).insertSheet(ARCHIVE_SHEET_NAME);
-    archiveSheet.appendRow(headers);
+    archiveSheet = SpreadsheetApp.openById(ssId).insertSheet(LOG_ARCHIVE_SHEET_NAME);
+    archiveSheet.getRange(1, 1, 1, headers.length).setValues([headers])
+      .setFontWeight('bold').setBackground('#f1f5f9');
+    archiveSheet.setFrozenRows(1);
   }
-  
-  if (rowsToArchive.length > 0) {
-    archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, rowsToArchive.length, headers.length).setValues(rowsToArchive);
-  }
+
+  archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, rowsToArchive.length, headers.length).setValues(rowsToArchive);
 
   // 6. Logシートから削除（後ろから削除してインデックスずれ防止）
   rowIndicesToRemove.reverse().forEach(idx => logSheet.deleteRow(idx));

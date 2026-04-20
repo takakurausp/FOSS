@@ -84,7 +84,9 @@ function apiSubmitReview(data) {
     'openCommentsId':          openDoc.getId(),
     'confidentialCommentsId':  confDoc.getId()
   });
-  
+
+  writeLog(`Review Submitted: ${msVer} by ${msData.Rev_Email || msData.Rev_Name || 'reviewer'} - Score: ${data.score}`);
+
   // 7. Send Email to Editor
   sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId);
   

@@ -12,6 +12,7 @@ const PENDING_EMAILS_SHEET_NAME = 'Emails';
 const DECISION_MAIL_SHEET_NAME = 'Decisions';
 const LOG_SHEET_NAME = 'Log';
 const ARCHIVE_SHEET_NAME = 'Archive';
+const LOG_ARCHIVE_SHEET_NAME = 'Log_archive';
 
 // リファクタリングされたモジュールの参照
 // Note: GASではモジュールインポートができないため、関数はグローバルスコープで定義されます
@@ -847,7 +848,14 @@ function apiArchiveManuscript(key) {
 
 function writeLog(text) {
   const ssId = getSpreadsheetId();
-  if(!ssId) return;
-  const sheet = SpreadsheetApp.openById(ssId).getSheetByName(LOG_SHEET_NAME);
-  if(sheet) sheet.appendRow([new Date(), text]);
+  if (!ssId) return;
+  const ss = SpreadsheetApp.openById(ssId);
+  let sheet = ss.getSheetByName(LOG_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(LOG_SHEET_NAME);
+    sheet.getRange(1, 1, 1, 2).setValues([['Timestamp', 'Message']])
+      .setFontWeight('bold').setBackground('#f1f5f9');
+    sheet.setFrozenRows(1);
+  }
+  sheet.appendRow([new Date(), text]);
 }

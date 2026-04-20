@@ -62,7 +62,7 @@ const SETUP_HEADERS = {
     'attachmentFileIds', 'savedAt', 'logText'
   ],
   Log: ['Timestamp', 'Message'],
-  Archive: ['ArchivedAt', 'OriginalSheet', 'Data']
+  Log_archive: ['Timestamp', 'Message']
 };
 
 // ===== Settings シートの既定値 =====
