@@ -3,81 +3,56 @@
  */
 
 function apiSubmitReview(data) {
-  if (data.files && data.files.length > 0) {
-    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
-    validateFileSafety(data.files, '添付ファイル / Attachments');
-    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
-  }
+  validateUploadedFiles(data.files);
 
-  const ssId = getSpreadsheetId();
-  const settings = getSettings();
+  var ctx = getApiContext('reviewer', data.reviewKey, 'Review record');
 
-  // 1. Get manuscript data using the reviewer key
-  const msData = getManuscriptData('reviewer', data.reviewKey);
-  if (!msData) throw new Error("Review record not found.");
-
-  // 承諾済み(revOk='ok')かつ未提出の招待からのみ結果を受け付ける。
-  // （同じメールアドレスに新旧2通の招待が届いた場合など、
-  //   古い（辞退/取消済みの）URLから提出されると誤った行に書き込まれる事故を防止）
-  const revOkStatus = String(msData.revOk || '').trim();
+  var revOkStatus = String(ctx.msData.revOk || '').trim();
   if (revOkStatus !== 'ok') {
     throw new Error('この招待は受諾されていないか、辞退・取消済みのため結果を提出できません。'
                   + '最新の依頼メールに記載のURLをご確認ください。\n'
                   + 'Cannot submit: this invitation was not accepted, or has been declined/cancelled. '
                   + 'Please use the URL in the most recent invitation email.');
   }
-  if (String(msData.Received_At || '').trim() !== '') {
+  if (String(ctx.msData.Received_At || '').trim() !== '') {
     throw new Error('この査読結果はすでに提出済みのため、再度の提出はできません。\n'
                   + 'This review has already been submitted.');
   }
 
-  const hexId = msData.MsVerRevHex;
-  const msVer = msData.MsVer;
-  const msId = msData.MS_ID;
-  const todayNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+  var hexId = ctx.msData.MsVerRevHex;
+  var msVer = ctx.msData.MsVer;
+  var msId = ctx.msData.MS_ID;
+  var todayNow = apiTimestamp();
 
-  // 2 & 3. Drive/Docs 操作を先に完了させてから DB を更新する。
-  // Drive/Docs で例外が発生しても DB は未変更のままなので不整合が生じない。
+  var rootName = ctx.settings.SUBFOLDER || 'Journal Files';
+  var root = driveFolderCache.getRootFolder(rootName) || DriveApp.createFolder(rootName);
+  var msFolder = driveFolderCache.getOrCreateFolder(root, msId);
+  var verNo = ctx.msData.Ver_No || 1;
+  var verFolder = driveFolderCache.getOrCreateFolder(msFolder, 'ver.' + verNo);
 
-  // 2. Create a subfolder for this review
-  const rootName = settings.SUBFOLDER || 'Journal Files';
-  const root = driveFolderCache.getRootFolder(rootName) || DriveApp.createFolder(rootName);
-  const msFolder = driveFolderCache.getOrCreateFolder(root, msId);
-  const verNo = msData.Ver_No || 1;
-  const verFolder = driveFolderCache.getOrCreateFolder(msFolder, 'ver.' + verNo);
+  var reviewerName = ctx.msData.Rev_Name || 'Unknown_Reviewer';
+  var revFolder = driveFolderCache.getOrCreateFolder(verFolder, reviewerName);
 
-  const reviewerName = msData.Rev_Name || 'Unknown_Reviewer';
-  // 査読者フォルダ（コメントGDocsはここに保存 / 外部には共有しない）
-  const revFolder = driveFolderCache.getOrCreateFolder(verFolder, reviewerName);
-
-  // 3. Save attachments — 添付ファイルは attachments/ サブフォルダに分離
-  //    EIC・編集幹事には attachments/ フォルダのリンクのみ表示し、
-  //    コメントGDocsが混在する revFolder を直接見せないようにする
-  let reviewFolderUrl = 'nofile';
+  var reviewFolderUrl = 'nofile';
   if (data.files && data.files.length > 0) {
-    const attachFolder = driveFolderCache.getOrCreateFolder(revFolder, 'attachments');
-    data.files.forEach(file => {
-      const blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
+    var attachFolder = driveFolderCache.getOrCreateFolder(revFolder, 'attachments');
+    data.files.forEach(function(file) {
+      var blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
       attachFolder.createFile(blob);
     });
     attachFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     reviewFolderUrl = attachFolder.getUrl();
   }
 
-  // 4. Save comments to Google Docs — コメントは revFolder（添付フォルダの親）に保存
-  //    共有リンクは渡さないため EIC・編集幹事からは見えない
-  const openDoc = DocumentApp.create('Open-Comments-' + hexId);
+  var openDoc = DocumentApp.create('Open-Comments-' + hexId);
   openDoc.getBody().appendParagraph(data.openComments || '');
-  const confDoc = DocumentApp.create('Confidential-Comments-' + hexId);
+  var confDoc = DocumentApp.create('Confidential-Comments-' + hexId);
   confDoc.getBody().appendParagraph(data.confidentialComments || '');
 
-  // Move docs to revFolder (not the attachments subfolder)
   DriveApp.getFileById(openDoc.getId()).moveTo(revFolder);
   DriveApp.getFileById(confDoc.getId()).moveTo(revFolder);
 
-  // 5. Drive/Docs が全て成功した後に DB をまとめて更新
-  // updateReviewLogCells で1回読み込み・1回書き込みにまとめる（旧: 5回個別呼び出し）
-  updateReviewLogCells(ssId, hexId, {
+  updateReviewLogCells(ctx.ssId, hexId, {
     'Received_At':             todayNow,
     'Score':                   data.score,
     'reviewerUploadFolderUrl': reviewFolderUrl,
@@ -85,10 +60,9 @@ function apiSubmitReview(data) {
     'confidentialCommentsId':  confDoc.getId()
   });
 
-  writeLog(`Review Submitted: ${msVer} by ${msData.Rev_Email || msData.Rev_Name || 'reviewer'} - Score: ${data.score}`);
+  writeLog('Review Submitted: ' + msVer + ' by ' + (ctx.msData.Rev_Email || ctx.msData.Rev_Name || 'reviewer') + ' - Score: ' + data.score);
 
-  // 7. Send Email to Editor
-  sendReviewResultToEditor(msData, data, reviewFolderUrl, settings, ssId);
+  sendReviewResultToEditor(ctx.msData, data, reviewFolderUrl, ctx.settings, ctx.ssId);
   
   return { success: true };
 }

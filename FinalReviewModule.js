@@ -25,40 +25,28 @@
  * EIC はこの Google Docs を編集・確認したうえで PDF 化して著者に送付する。
  */
 function apiSubmitManagingEditorReview(data) {
+  validateUploadedFiles(data.files);
+
+  var ctx = getApiContext('managing-editor', data.managingEditorKey, '原稿');
+
+  var now = apiTimestamp();
+
+  var fileUrl = '';
   if (data.files && data.files.length > 0) {
-    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
-    validateFileSafety(data.files, '添付ファイル / Attachments');
-    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
-  }
-
-  const ssId = getSpreadsheetId();
-  const settings = getSettings();
-
-  const msData = getManuscriptData('managing-editor', data.managingEditorKey);
-  if (!msData) throw new Error('原稿が見つかりません。/ Manuscript not found.');
-
-  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
-
-  // 書き込み済み原稿ファイルを Drive に保存
-  let fileUrl = '';
-  if (data.files && data.files.length > 0) {
-    const verFolder = getManuscriptVerFolder(msData, settings);
-    const meFolder = driveFolderCache.getOrCreateFolder(verFolder, 'managing-editor');
+    var verFolder = getManuscriptVerFolder(ctx.msData, ctx.settings);
+    var meFolder = driveFolderCache.getOrCreateFolder(verFolder, 'managing-editor');
     data.files.forEach(function(file) {
-      const blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
+      var blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
       meFolder.createFile(blob);
     });
     meFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     fileUrl = meFolder.getUrl();
   }
 
-  // 編集幹事の著者宛コメントをオープンコメント集 Google Docs に追記
-  // （フロントエンドから渡された reportGoogleDocId を優先し、
-  //   未渡しの場合は EditorLog から取得する）
   var docId = (data.reportGoogleDocId || '').trim();
-  if (!docId && msData._editorList && msData._editorList.length > 0) {
-    for (var ei = 0; ei < msData._editorList.length; ei++) {
-      var eDoc = (msData._editorList[ei].reportGoogleDocId || '').trim();
+  if (!docId && ctx.msData._editorList && ctx.msData._editorList.length > 0) {
+    for (var ei = 0; ei < ctx.msData._editorList.length; ei++) {
+      var eDoc = (ctx.msData._editorList[ei].reportGoogleDocId || '').trim();
       if (eDoc) { docId = eDoc; break; }
     }
   }
@@ -66,7 +54,6 @@ function apiSubmitManagingEditorReview(data) {
     try {
       var doc  = DocumentApp.openById(docId);
       var body = doc.getBody();
-      // セクション区切り
       body.appendHorizontalRule();
       var header = body.appendParagraph('Section 3: Managing Editor\'s Comments / 編集幹事コメント');
       header.setHeading(DocumentApp.ParagraphHeading.HEADING2);
@@ -77,19 +64,15 @@ function apiSubmitManagingEditorReview(data) {
     }
   }
 
-  // 受理済み再投稿フロー（担当編集者を介さず直接 ME へ来た場合）では
-  // 既存 Google Doc が存在しない。EIC が編集してオープンコメントPDFを著者に
-  // 送付できるよう、ME のコメントを内容とした新規 Open-Comments Doc/Word を作成する。
   var meReportFiles = null;
   if (!docId) {
     try {
-      meReportFiles = createManagingEditorOpenCommentsDoc(msData, data, settings);
+      meReportFiles = createManagingEditorOpenCommentsDoc(ctx.msData, data, ctx.settings);
     } catch (meErr) {
       Logger.log('createManagingEditorOpenCommentsDoc failed: ' + meErr.message);
     }
   }
 
-  // Manuscripts シートを更新
   var msUpdates = {
     'managingEditorAuthorComment':   data.authorComment   || '',
     'managingEditorInternalComment': data.internalComment || '',
@@ -100,20 +83,18 @@ function apiSubmitManagingEditorReview(data) {
     msUpdates.meCommentGoogleDocId = meReportFiles.googleDocId || '';
     msUpdates.meCommentWordUrl     = meReportFiles.wordUrl     || '';
   }
-  updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, msUpdates);
+  updateLogCell(ctx.ssId, MANUSCRIPTS_SHEET_NAME, 'key', ctx.msData.key, msUpdates);
 
-  // 担当編集者レポート＋編集幹事コメントを合わせた最終確認レポートPDFを生成
   var reportPdfBlob = null;
   try {
-    reportPdfBlob = createFinalReviewReport(msData, data, settings, ssId);
+    reportPdfBlob = createFinalReviewReport(ctx.msData, data, ctx.settings, ctx.ssId);
   } catch (pdfErr) {
     Logger.log('createFinalReviewReport failed: ' + pdfErr.message);
   }
 
-  // 委員長へ通知
-  _sendManagingEditorReviewToEIC(msData, data, fileUrl, settings, reportPdfBlob);
+  _sendManagingEditorReviewToEIC(ctx.msData, data, fileUrl, ctx.settings, reportPdfBlob);
 
-  writeLog('Managing Editor Review Submitted: ' + (msData.MsVer || ''));
+  writeLog('Managing Editor Review Submitted: ' + (ctx.msData.MsVer || ''));
   return { success: true };
 }
 
@@ -224,7 +205,8 @@ function apiEicFinalAction(data) {
     // ルートb: 印刷担当者に送付、ステータスを in_production へ
     updateLogCell(ssId, MANUSCRIPTS_SHEET_NAME, 'key', msData.key, {
       'finalStatus': 'in_production',
-      'accepted':    'yes'
+      'accepted':    'yes',
+      'score':       data.decision || ''
     });
     _sendFinalRouteBToProductionEditor(msData, data, eicFileUrl, settings);
     _notifyAuthorOfAcceptance(msData, data, settings, ssId);

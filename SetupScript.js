@@ -45,7 +45,7 @@ const SETUP_HEADERS = {
     'reportPdfUrl', 'reportWordUrl', 'reportFolderUrl',
     'reportGoogleDocId', 'reportCommentPdfUrl',
     'reportAttachmentsFolderUrl',
-    'firstReminded', 'secondReminded', 'thirdReminded'
+    'Reminder1_At', 'Reminder2_At', 'Reminder3_At'
   ],
   Review_log: [
     'MsVerRevHex', 'MsVer', 'reviewKey',
@@ -55,7 +55,8 @@ const SETUP_HEADERS = {
     'revOk', 'Review_Deadline', 'Score', 'Message', 'ConfidentialMessage',
     'openCommentsId', 'confidentialCommentsId',
     'reviewerUploadFolderUrl', 'reviewMaterialsFolderUrl',
-    'firstReminded', 'secondReminded', 'thirdReminded'
+    'Reminder1_At', 'Reminder2_At', 'Reminder3_At',
+    'SubReminder1_At', 'SubReminder2_At', 'SubReminder3_At'
   ],
   Emails: [
     'to', 'cc', 'bcc', 'subject', 'htmlBody',
@@ -77,11 +78,16 @@ const SETUP_SETTINGS_DEFAULTS = [
   ['SUBFOLDER',             'Journal Files'],
   ['reviewMaterialsFolder', ''],
   ['submissionBccEmails',   ''],
-  ['Resubmittion_Limit',    '8 weeks'],
+  ['Resubmittion_Limit',         '8 weeks'],
+  ['Resubmission_Expire_Months', '6'],       // 再投稿期限切れアーカイブまでの猶予月数
   ['Review_Period',         '21'],
   ['firstReminderDays',     '7'],
   ['secondReminderDays',    '14'],
   ['thirdReminderDays',     '21'],
+  // 査読提出リマインダ: Review_Deadline からの「超過日数」しきい値（負の値で期限前警告も可）
+  ['submissionReminderL1Days', '0'],   // 期限到来時に最初のリマインド
+  ['submissionReminderL2Days', '7'],   // 7日超過で2回目
+  ['submissionReminderL3Days', '14'],  // 14日超過で最終リマインド
   ['mailFooter',            '<hr><p style="font-size:12px;color:#666;">This is an automated message. / これは自動配信メールです。</p>']
 ];
 
@@ -123,6 +129,7 @@ function setupAll() {
   try {
     messages.push(setupScriptProperty());
     messages.push(setupSheets());
+    messages.push(validateAndFixHeaders());
     messages.push(setupSettings());
     messages.push(setupManuscriptTypes());
     messages.push(setupDecisions());
@@ -225,6 +232,62 @@ function setupSheets() {
 }
 
 /**
+ * 既存シートのヘッダー行を SETUP_HEADERS と照合し、
+ * 大文字小文字・表記ゆれを自動修正する。
+ * 修正結果はログに出力される。
+ * CANONICAL_COLUMN_NAMES のランタイム正規化への依存を減らす目的。
+ */
+function validateAndFixHeaders() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const lines = [];
+  let totalFixed = 0;
+
+  Object.keys(SETUP_HEADERS).forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+
+    const lastCol = sheet.getLastColumn();
+    if (lastCol === 0) return;
+
+    const existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const canonical = SETUP_HEADERS[sheetName];
+    const canonicalLower = canonical.map(h => h.toLowerCase().trim());
+    const fixed = [];
+    const newHeaders = existingHeaders.slice();
+
+    for (let col = 0; col < lastCol; col++) {
+      const current = String(existingHeaders[col] || '').trim();
+      if (!current) continue;
+
+      const currentLower = current.toLowerCase();
+
+      if (canonicalLower.includes(currentLower)) {
+        const expectedIndex = canonicalLower.indexOf(currentLower);
+        const expected = canonical[expectedIndex];
+        if (current !== expected) {
+          newHeaders[col] = expected;
+          fixed.push(current + ' → ' + expected);
+          totalFixed++;
+        }
+      }
+    }
+
+    if (fixed.length > 0) {
+      sheet.getRange(1, 1, 1, lastCol).setValues([newHeaders]);
+      sheet.getRange(1, 1, 1, lastCol).setFontWeight('bold').setBackground('#f1f5f9');
+      lines.push('  [FIX] ' + sheetName + ': ' + fixed.length + ' 列を修正 — ' + fixed.join(', '));
+    } else {
+      lines.push('  [OK] ' + sheetName + ': ヘッダー表記は正常です。');
+    }
+  });
+
+  if (totalFixed === 0) {
+    return '[OK] ヘッダー検証: 全シートのヘッダー表記は正規名と一致しています。';
+  }
+  return '[FIX] ヘッダー検証: ' + totalFixed + ' 列の表記ゆれを修正しました。\n' + lines.join('\n');
+}
+
+/**
  * Settings シートに既定値を書き込む（既存の値は上書きしない）。
  */
 function setupSettings() {
@@ -324,6 +387,7 @@ function onOpen() {
       .addItem('初回セットアップ / Setup All', 'setupAll')
       .addSeparator()
       .addItem('シートのみ作成 / Setup Sheets', 'setupSheets')
+      .addItem('ヘッダー検証・修正 / Validate Headers', 'validateAndFixHeaders')
       .addItem('既定値投入 / Setup Settings', 'setupSettings')
       .addItem('原稿種別投入 / Setup MS Types', 'setupManuscriptTypes')
       .addItem('判定テンプレート投入 / Setup Decisions', 'setupDecisions')

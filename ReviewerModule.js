@@ -3,6 +3,7 @@
  */
 
 function apiAssignReviewers(data) {
+  enforceRateLimit(data.editorKey);
   const ssId = getSpreadsheetId();
   const settings = getSettings();
   

@@ -6,7 +6,7 @@
  * クライアントからの新規投稿リクエストを処理
  */
 function apiSubmitSubmission(data) {
-  // 入力バリデーション
+  enforceRateLimit(data.authorEmail);
   validateRequiredString(data.authorName,  '著者名 (authorName)');
   validateEmail(data.authorEmail,          '著者メールアドレス (authorEmail)');
   validateRequiredString(data.paperType,   '論文種別 (paperType)');
@@ -222,7 +222,7 @@ function addNewMsToDB(ssId, ms) {
  * クライアントからの再投稿リクエストを処理
  */
 function apiSubmitResubmission(data) {
-  // 入力バリデーション
+  enforceRateLimit(data.msKey);
   validateRequiredString(data.msKey, '原稿キー (msKey)');
   if (data.authorEmail) validateEmail(data.authorEmail, '著者メールアドレス (authorEmail)');
   if (data.ccEmails)    validateEmailList(data.ccEmails, 'CC メールアドレス (ccEmails)');

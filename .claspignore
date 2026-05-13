@@ -1,3 +1,12 @@
 node_modules/
 **/*.test.js
 test/
+
+# ローカル専用ファイル（GAS にアップロード不要）
+scripts/**
+deployments/**
+**/*.ps1
+**/*.md
+.git/**
+.claude/**
+.clasp.json.backup

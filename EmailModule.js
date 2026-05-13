@@ -428,15 +428,20 @@ function generateReceiptPdf(ms, settings) {
  */
 /**
  * クォータを確認してメール送信。上限超過時は Emails シートに一時保存する。
- * @param {Object} options MailApp.sendEmail と同じ形式 (to, cc, subject, htmlBody, attachments)
+ * @param {Object} options GmailApp.sendEmail と同じ形式 (to, cc, subject, htmlBody, attachments)
  * @param {string} logText ログ用の説明文
  * @returns {boolean} 即時送信に成功した場合のみ true。キューイング・失敗時は false。
  */
 function sendEmailSafe(options, logText) {
-  const quota = MailApp.getRemainingDailyQuota();
+  const quota = GmailApp.getRemainingDailyQuota();
   if (quota > 0) {
     try {
-      MailApp.sendEmail(options);
+      GmailApp.sendEmail(options.to, options.subject, '', {
+        cc: options.cc,
+        bcc: options.bcc,
+        htmlBody: options.htmlBody,
+        attachments: options.attachments
+      });
       Logger.log('Email sent: ' + logText);
       return true;
     } catch (e) {
@@ -504,9 +509,14 @@ function savePendingEmail(options, logText) {
 }
 
 /**
- * 送信保留メールの再送処理。
- * 時間ベーストリガー（例: 1時間ごと）に設定して使用する。
- * GAS エディタ → トリガー → retrySendingEmails → 時間ベース で設定してください。
+ * 送信保留メールの再送処理。時間ベーストリガで定期実行する。
+ *
+ * トリガ登録は ReminderModule.js の setupReminderTriggers() を実行すると
+ * 自動で行われる（毎日 12:00 JST）。手動 UI から個別に設定する必要は無い。
+ *
+ * Bug 6 修正以降、ReminderModule の checkReminders はキュー投入時にも
+ * タイムスタンプを記録するため、本関数のトリガ登録はリマインダ機能の
+ * 動作前提となっている。setupReminderTriggers() を必ず実行すること。
  */
 function retrySendingEmails() {
   const ssId = getSpreadsheetId();
@@ -514,7 +524,7 @@ function retrySendingEmails() {
   if (!sheet || sheet.getLastRow() < 2) return;
 
   const data = sheet.getDataRange().getValues();
-  let quota = MailApp.getRemainingDailyQuota();
+  let quota = GmailApp.getRemainingDailyQuota();
   const sentRows = []; // 送信成功した行番号（1始まり）を収集
 
   // 古い順（上から）に処理
@@ -544,7 +554,12 @@ function retrySendingEmails() {
     if (attachments.length > 0) mailOptions.attachments = attachments;
 
     try {
-      MailApp.sendEmail(mailOptions);
+      GmailApp.sendEmail(mailOptions.to, mailOptions.subject, '', {
+        cc: mailOptions.cc,
+        bcc: mailOptions.bcc,
+        htmlBody: mailOptions.htmlBody,
+        attachments: mailOptions.attachments
+      });
       quota--;
       sentRows.push(i + 1); // シート行番号（ヘッダー行 +1）
       Logger.log('Pending email resent to ' + to + ' | ' + logText);

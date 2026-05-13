@@ -110,12 +110,17 @@ function enrichWithFolderInfo(msData, ssId) {
 }
 
 /**
- * 受理内定後の再投稿（Route 2: ME 直行ルート）における「前回ラウンド」のデータを構築する。
- * 当ラウンドに査読者・担当編集者が存在しない Route 2 で、ME・EIC ダッシュボードに
- * 直前ラウンドの査読者／担当編集者／編集幹事／編集委員長のコメント・添付ファイルを表示するため。
+ * 再投稿原稿における「前回ラウンド」のデータを構築する。
+ * 再投稿（Ver_No > 1）かつ直前バージョンが存在する限り、必ず前回ラウンドの
+ * 査読者・担当編集者・編集幹事・編集委員長の記録を返す。以下 2 シナリオを区別する：
+ *   - scenario='route2'  : 受理内定後の再投稿（直前バージョンが accepted='yes'）。
+ *                          ME 直行ルート。当ラウンドに査読者・担当編集者は存在しない。
+ *   - scenario='revision': Resubmit='yes' 判定後の再投稿（Major/Minor Revision 等）。
+ *                          直前バージョンに sentBackAt（または managingEditorSentAt）が記録されている。
  *
- * 判定: Ver_No > 1 かつ 直前バージョンの accepted === 'yes' なら Route 2。
- * それ以外（通常ルートや初回投稿）は null を返す。
+ * 返却オブジェクトには経過日数（daysSinceSentBack）や前回判定スコア（prevScore）を含め、
+ * EIC・ME ダッシュボードで前回ラウンドの記録を一括参照できるようにする。
+ * Ver_No <= 1 の初回投稿、MS_ID が無い、直前バージョンが見つからない場合は null を返す。
  */
 function buildPrevRoundForRoute2(ssId, msData, dateFormatter) {
   const currentVerNo = Number(msData.Ver_No || 1);
@@ -128,7 +133,25 @@ function buildPrevRoundForRoute2(ssId, msData, dateFormatter) {
   const prevVersion = allVersions.find(v => Number(v.Ver_No || 0) === currentVerNo - 1);
   if (!prevVersion) return null;
 
-  if (String(prevVersion.accepted || '').trim().toLowerCase() !== 'yes') return null;
+  // 発火条件: 再投稿（Ver_No > 1）であれば前バージョンの記録を必ず表示する。
+  // これにより、Route 2（受理内定後）・Resubmit=yes（Major/Minor Revision 等）に加え、
+  // データ欠損（sentBackAt 未記録など）があっても前回ラウンドの査読ログ・編集者ログ・コメントは参照可能。
+  const prevAccepted    = String(prevVersion.accepted || '').trim().toLowerCase() === 'yes';
+  const prevSentBackRaw = String(prevVersion.sentBackAt || prevVersion.SentBackAt || '').trim();
+  const prevMeSentRaw   = String(prevVersion.managingEditorSentAt || '').trim();
+
+  const scenario = prevAccepted ? 'route2' : 'revision';
+
+  // 前回判定を著者に送信してからの経過日数
+  // sentBackAt を優先、無ければ managingEditorSentAt をフォールバック
+  let daysSinceSentBack = null;
+  const dateForDays = prevSentBackRaw || prevMeSentRaw;
+  if (dateForDays) {
+    const d = new Date(dateForDays);
+    if (!isNaN(d.getTime())) {
+      daysSinceSentBack = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+    }
+  }
 
   const prevMsVer = String(prevVersion.MsVer || '').trim();
   const prevReviewLogs = findAllRecordsByKey(ssId, REVIEW_LOG_SHEET_NAME, 'MsVer', prevMsVer);
@@ -137,6 +160,10 @@ function buildPrevRoundForRoute2(ssId, msData, dateFormatter) {
   return {
     msVer: prevMsVer,
     verNo: Number(prevVersion.Ver_No || 0),
+    scenario: scenario,
+    prevScore: String(prevVersion.eicFinalDecision || prevVersion.score || '').trim(),
+    sentBackAt: dateForDays ? dateFormatter(dateForDays) : '',
+    daysSinceSentBack: daysSinceSentBack,
     reviewerList: buildReviewerList(prevReviewLogs, dateFormatter),
     editorList: prevEditorLogs.map(log => ({
       Editor_Name:                String(log.Editor_Name                || '').trim(),

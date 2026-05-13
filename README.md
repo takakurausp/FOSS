@@ -19,32 +19,38 @@ A Google Apps Script (GAS) web application for managing academic manuscript subm
 - Configurable per journal or society via a Settings sheet
   Settings シートで学術誌・学会ごとにカスタマイズ可能
 
-## Setup / セットアップ
+## Documentation / ドキュメント
 
-### Quick Start / クイックスタート
+| Document | Content |
+|---|---|
+| [`SETUP.md`](./SETUP.md) | Step-by-step setup guide (automated + manual) / セットアップ手順書 |
+| [`TESTING.md`](./TESTING.md) | Test procedures for all bug fixes / テスト手順書 |
+| [`scripts/README.md`](./scripts/README.md) | Deployment automation scripts / デプロイ自動化スクリプト |
+
+## Quick Start / クイックスタート
+
+For the **complete setup procedure** including automated deployment via PowerShell, see [`SETUP.md`](./SETUP.md).
+完全なセットアップ手順（PowerShell による自動デプロイ含む）は [`SETUP.md`](./SETUP.md) を参照。
+
+### Minimal manual setup / 最小限の手動セットアップ
 
 1. **Create a new Google Spreadsheet** and open the bound Apps Script editor (Extensions → Apps Script).
    新規 Google スプレッドシートを作成し、「拡張機能 → Apps Script」でバインドされたエディタを開きます。
 
-2. **Copy all `.gs` and `.html` files** from this repository into the script project (manually or via [clasp](https://github.com/google/clasp)).
-   本リポジトリの `.gs` および `.html` ファイルをすべてコピーします（手動または [clasp](https://github.com/google/clasp) を使用）。
+2. **Copy all `.js`/`.gs` and `.html` files** from this repository into the script project (manually or via [clasp](https://github.com/google/clasp)).
+   本リポジトリの `.js`/`.gs` および `.html` ファイルをすべてコピーします（手動または [clasp](https://github.com/google/clasp) を使用）。
 
-3. **Run `setupAll()`** from the GAS editor (in `SetupScript.gs`). The script will:
-   GAS エディタから `setupAll()`（`SetupScript.gs` 内）を実行します。以下が自動的に行われます:
-   - Save the spreadsheet ID to script properties / スプレッドシート ID をスクリプトプロパティに保存
-   - Create all required sheets (Manuscripts, Editor_log, Review_log, Settings, Decisions, Emails, Log, Archive) with proper headers
-     必要なシート（Manuscripts, Editor_log, Review_log, Settings, Decisions, Emails, Log, Archive）をヘッダー付きで作成
-   - Populate default values into Settings, manuscript types, and Decisions
-     Settings・原稿種別・Decisions に既定値を投入
+3. **Run `bootstrap()`** from the GAS editor (in `Bootstrap.js`). This single function will:
+   GAS エディタから `bootstrap()`（`Bootstrap.js` 内）を実行します。以下が一括実行されます:
+   - Initialize all sheets with headers / 全シートをヘッダー付きで初期化
+   - Populate Settings, Decisions, ManuscriptTypes / 既定値投入
+   - Register all required time-based triggers / 時間ベーストリガを一括登録
 
-4. **Edit the Settings sheet** to configure `Journal_Name`, `chiefEditorEmail`, `managingEditorEmail`, etc.
-   Settings シートを開いて `Journal_Name`、`chiefEditorEmail`、`managingEditorEmail` などを設定します。
+4. **Edit the Settings sheet** to configure `Journal_Name`, `chiefEditorEmail`, etc.
+   Settings シートを編集して `Journal_Name`、`chiefEditorEmail` 等を設定。
 
 5. **Deploy as a web app** (Deploy → New deployment → Type: Web app, Execute as: Me, Access: Anyone).
-   ウェブアプリとしてデプロイします（デプロイ → 新しいデプロイ → ウェブアプリ、実行: 自分、アクセス: 全員）。
-
-After setup, a custom menu **"Manuscript System"** appears in the spreadsheet for re-running individual setup steps.
-セットアップ後、スプレッドシートに **「Manuscript System」** メニューが表示され、個別のセットアップ手順を再実行できます。
+   ウェブアプリとしてデプロイ（デプロイ → 新しいデプロイ → ウェブアプリ、実行: 自分、アクセス: 全員）。
 
 ## Author / 作者
 

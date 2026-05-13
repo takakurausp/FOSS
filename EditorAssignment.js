@@ -7,41 +7,29 @@
  * @param {Object} data { msKey, editorName, editorEmail, letterToEditor }
  */
 function apiAssignEditor(data) {
-  // 入力バリデーション
   validateRequiredString(data.msKey,       '原稿キー (msKey)');
   validateRequiredString(data.editorName,  '担当編集者名 (editorName)');
   validateEmail(data.editorEmail,          '担当編集者メールアドレス (editorEmail)');
-  // letterToEditor は任意項目のため検証不要
 
-  const ssId = getSpreadsheetId();
-  const settings = getSettings();
+  var ctx = getApiContextByMsKey(data.msKey);
 
-  // 1. 論文情報を取得（著者キーまたは編集委員長専用キーによる検索）
-  let ms = findRecordByKey(ssId, MANUSCRIPTS_SHEET_NAME, 'key', data.msKey);
-  if (!ms) ms = findRecordByKey(ssId, MANUSCRIPTS_SHEET_NAME, 'eicKey', data.msKey);
-  if (!ms) throw new Error('Manuscript not found for key: ' + data.msKey);
-
-  // 2. 現在の担当編集者候補の状態を確認
-  const msVer = ms['MsVer'] || '';
-  const editorLogs = findAllRecordsByKey(ssId, EDITOR_LOG_SHEET_NAME, 'MsVer', msVer);
+  var msVer = ctx.msData['MsVer'] || '';
+  var editorLogs = findAllRecordsByKey(ctx.ssId, EDITOR_LOG_SHEET_NAME, 'MsVer', msVer);
   
-  // 辞退していない（未回答または承諾）候補者がいるか確認
-  const hasActiveCandidate = editorLogs.some(log => {
-    const edtOk = String(log.edtOk || '').trim();
-    return edtOk === '' || edtOk === 'ok'; // 未回答または承諾
+  var hasActiveCandidate = editorLogs.some(function(log) {
+    var edtOk = String(log.edtOk || '').trim();
+    return edtOk === '' || edtOk === 'ok';
   });
   
   if (hasActiveCandidate) {
     throw new Error('既に担当編集者候補が割り当てられており、まだ辞退していません。新たな候補者の指名はできません。/ An editor candidate has already been assigned and has not declined yet. You cannot assign a new candidate.');
   }
 
-  // 3. Editor用キーの発行
-  const msVerRevHex = getMsVerRevHexFromMsVer(msVer);
-  const editorKey = msVerRevHex + Utilities.getUuid().replace(/-/g, '');  // CSPRNG (128 bit)
+  var msVerRevHex = getMsVerRevHexFromMsVer(msVer);
+  var editorKey = msVerRevHex + Utilities.getUuid().replace(/-/g, '');
 
-  // 4. Editor_logへの記録
-  const now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
-  addEditorLogEntry(ssId, {
+  var now = apiTimestamp();
+  addEditorLogEntry(ctx.ssId, {
     MsVer: msVer,
     MsVerRevHex: msVerRevHex,
     editorKey: editorKey,
@@ -50,10 +38,9 @@ function apiAssignEditor(data) {
     Ask_At: now
   });
 
-  // 5. 担当編集者への依頼メール送信
-  sendEditorRequestEmail(ms, data, editorKey, settings);
+  sendEditorRequestEmail(ctx.msData, data, editorKey, ctx.settings);
 
-  writeLog(`Editor Assigned: ${msVer} by Chief Editor (Target: ${data.editorName})`);
+  writeLog('Editor Assigned: ' + msVer + ' by Chief Editor (Target: ' + data.editorName + ')');
 
   return { success: true, editorKey: editorKey };
 }

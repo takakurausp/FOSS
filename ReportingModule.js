@@ -279,16 +279,300 @@ function generateReportHtml(journalName, dateRange, logs, summary) {
 }
 
 /**
+ * 定期的な原稿アーカイブ処理
+ * 判定日から ARCHIVE_AGE_MONTHS ヶ月以上経過した以下の原稿を各アーカイブシートへ移動：
+ *   - 受理確定原稿 (accepted='yes')        → Accepted_archive
+ *   - EIC早期却下原稿 (stoppedByEicAt あり) → Rejected_archive
+ * Manuscripts シートから該当行を削除し、Drive フォルダ名に [ARCHIVED] を付加する。
+ * Editor_log / Review_log は変更しない（本体の肥大化対策を優先）。
+ */
+function archiveAgedManuscripts() {
+  const ssId = getSpreadsheetId();
+  if (!ssId) return;
+  const ss = SpreadsheetApp.openById(ssId);
+  const msSheet = ss.getSheetByName(MANUSCRIPTS_SHEET_NAME);
+  if (!msSheet) return;
+
+  const now = new Date();
+  const threshold = new Date(now.getFullYear(), now.getMonth() - ARCHIVE_AGE_MONTHS, now.getDate());
+
+  const data = msSheet.getDataRange().getValues();
+  if (data.length < 2) return;
+
+  const headers = data[0];
+  const acceptedIdx   = headers.indexOf('accepted');
+  const stoppedAtIdx  = headers.indexOf('stoppedByEicAt');
+  const sentBackAtIdx = headers.indexOf('sentBackAt');
+  const meSentAtIdx   = headers.indexOf('managingEditorSentAt');
+  const finalStatusIdx= headers.indexOf('finalStatus');
+  const msVerIdx      = headers.indexOf('MsVer');
+  const msIdIdx       = headers.indexOf('MS_ID');
+  const folderUrlIdx  = headers.indexOf('folderUrl');
+  const caNameIdx     = headers.indexOf('CA_Name');
+
+  const acceptedRows = [];
+  const rejectedRows = [];
+  const rowsToDelete = []; // 1-indexed
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+
+    // EIC早期却下（優先判定）
+    if (stoppedAtIdx !== -1) {
+      const stoppedAt = row[stoppedAtIdx];
+      if (stoppedAt && String(stoppedAt).trim()) {
+        const d = new Date(stoppedAt);
+        if (!isNaN(d.getTime()) && d < threshold) {
+          rejectedRows.push(row);
+          rowsToDelete.push(i + 1);
+          continue;
+        }
+      }
+    }
+
+    // 受理確定（ME 進行中は除外: finalStatus='final_review' はまだ作業中）
+    const accepted = String(row[acceptedIdx] || '').toLowerCase().trim();
+    const finalStatus = finalStatusIdx !== -1 ? String(row[finalStatusIdx] || '').trim() : '';
+    if (accepted === 'yes' && finalStatus !== 'final_review') {
+      const ts = row[sentBackAtIdx] || (meSentAtIdx !== -1 ? row[meSentAtIdx] : '');
+      if (ts) {
+        const d = new Date(ts);
+        if (!isNaN(d.getTime()) && d < threshold) {
+          acceptedRows.push(row);
+          rowsToDelete.push(i + 1);
+        }
+      }
+    }
+  }
+
+  if (acceptedRows.length === 0 && rejectedRows.length === 0) {
+    writeLog('Archive batch (manuscripts): no records older than ' + ARCHIVE_AGE_MONTHS + ' months.');
+    return;
+  }
+
+  _appendRowsToManuscriptArchive(ss, ACCEPTED_ARCHIVE_SHEET_NAME, headers, acceptedRows);
+  _appendRowsToManuscriptArchive(ss, REJECTED_ARCHIVE_SHEET_NAME, headers, rejectedRows);
+
+  // Drive フォルダをリネーム（アーカイブ対象行すべて）
+  [...acceptedRows, ...rejectedRows].forEach(row => {
+    const folderUrl = folderUrlIdx !== -1 ? row[folderUrlIdx] : '';
+    if (!folderUrl) return;
+    try {
+      const match = String(folderUrl).match(/[-\w]{25,}/);
+      if (!match) return;
+      const folder = DriveApp.getFolderById(match[0]);
+      const oldName = folder.getName();
+      if (!oldName.includes('[ARCHIVED]')) folder.setName('[ARCHIVED] ' + oldName);
+    } catch(e) {
+      Logger.log('Archive folder rename failed for MsVer=' + (msVerIdx !== -1 ? row[msVerIdx] : '?') + ': ' + e.message);
+    }
+  });
+
+  // Manuscripts から削除（後ろから）
+  rowsToDelete.sort((a, b) => b - a).forEach(idx => msSheet.deleteRow(idx));
+
+  // キャッシュ無効化
+  try { spreadsheetCache.invalidate(ssId, MANUSCRIPTS_SHEET_NAME); } catch(_) {}
+
+  writeLog('Archive batch (manuscripts): ' + acceptedRows.length + ' accepted → Accepted_archive, ' + rejectedRows.length + ' EIC-rejected → Rejected_archive (≥ ' + ARCHIVE_AGE_MONTHS + ' months old).');
+}
+
+/**
+ * 再投稿期限切れ原稿のアーカイブ処理
+ *
+ * Decisions シートで Resubmit='yes' に該当するスコア（Major/Minor Revision 等）の判定を受け、
+ * Settings の Resubmission_Expire_Months を超過しても再投稿が行われなかった原稿を
+ * Expired_archive シートへ移動する。
+ *
+ * 保護ルール：
+ *   - 同 MS_ID に Ver_No が大きい行（再投稿済み）が存在する場合は対象外。
+ *     → 前回ラウンドの記録は決してアーカイブされない。
+ *   - sentBackAt が空／パース不可の行はスキップ。
+ *   - EIC早期却下（stoppedByEicAt あり）は archiveAgedManuscripts() 側で処理済みのため除外。
+ */
+function archiveExpiredResubmissions() {
+  const ssId = getSpreadsheetId();
+  if (!ssId) return;
+
+  const settings = getSettings();
+  const expireMonths = parseInt(settings.Resubmission_Expire_Months || '6', 10) || 6;
+
+  const ss = SpreadsheetApp.openById(ssId);
+  const msSheet = ss.getSheetByName(MANUSCRIPTS_SHEET_NAME);
+  if (!msSheet) return;
+
+  const now = new Date();
+  const threshold = new Date(now.getFullYear(), now.getMonth() - expireMonths, now.getDate());
+
+  // ── Decisions シートから Resubmit=yes のスコア名を一括取得 ──────────────────
+  const allowsResubmitSet = new Set();
+  try {
+    const decSheet = ss.getSheetByName(DECISION_MAIL_SHEET_NAME);
+    if (decSheet) {
+      const decData = decSheet.getDataRange().getValues();
+      if (decData.length >= 2) {
+        const decHeaders = decData[0].map(h => String(h).trim());
+        const scoreNameIdx  = decHeaders.indexOf('ShortExplanation');
+        const resubmitIdx   = decHeaders.indexOf('Resubmit');
+        if (scoreNameIdx !== -1 && resubmitIdx !== -1) {
+          for (let r = 1; r < decData.length; r++) {
+            const v = String(decData[r][resubmitIdx] || '').trim().toLowerCase();
+            if (v === 'yes' || v === 'true' || v === '1') {
+              const scoreName = String(decData[r][scoreNameIdx] || '').trim();
+              if (scoreName) allowsResubmitSet.add(scoreName);
+            }
+          }
+        }
+      }
+    }
+  } catch(e) {
+    Logger.log('archiveExpiredResubmissions: Decisions sheet read failed: ' + e.message);
+  }
+
+  if (allowsResubmitSet.size === 0) {
+    writeLog('archiveExpiredResubmissions: no Resubmit=yes decisions defined — skipping.');
+    return;
+  }
+
+  // ── Manuscripts シート全行を取得 ──────────────────────────────────────────────
+  const data = msSheet.getDataRange().getValues();
+  if (data.length < 2) return;
+
+  const headers      = data[0];
+  const scoreIdx       = headers.indexOf('score');
+  const sentBackAtIdx  = headers.indexOf('sentBackAt');
+  const acceptedIdx    = headers.indexOf('accepted');
+  const stoppedAtIdx   = headers.indexOf('stoppedByEicAt');
+  const finalStatusIdx = headers.indexOf('finalStatus');
+  const msIdIdx        = headers.indexOf('MS_ID');
+  const verNoIdx       = headers.indexOf('Ver_No');
+  const folderUrlIdx   = headers.indexOf('folderUrl');
+  const msVerIdx       = headers.indexOf('MsVer');
+
+  if (scoreIdx === -1 || sentBackAtIdx === -1 || acceptedIdx === -1 || msIdIdx === -1 || verNoIdx === -1) {
+    Logger.log('archiveExpiredResubmissions: required header(s) missing — skipping.');
+    return;
+  }
+
+  // ── MS_ID ごとの最大 Ver_No を先に計算（前回ラウンド保護のため）────────────
+  const maxVerNoByMsId = {};
+  for (let i = 1; i < data.length; i++) {
+    const msId = String(data[i][msIdIdx] || '').trim();
+    const verNo = Number(data[i][verNoIdx] || 0);
+    if (msId) {
+      maxVerNoByMsId[msId] = Math.max(maxVerNoByMsId[msId] || 0, verNo);
+    }
+  }
+
+  // ── 各行を判定 ────────────────────────────────────────────────────────────────
+  const expiredRows  = [];
+  const rowsToDelete = []; // 1-indexed
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+
+    const score       = String(row[scoreIdx]      || '').trim();
+    const sentBackAt  = row[sentBackAtIdx];
+    const accepted    = String(row[acceptedIdx]   || '').trim().toLowerCase();
+    const stoppedAt   = String(row[stoppedAtIdx !== -1 ? stoppedAtIdx : -1] || '').trim();
+    const finalStatus = String(finalStatusIdx !== -1 ? (row[finalStatusIdx] || '') : '').trim();
+    const msId        = String(row[msIdIdx]       || '').trim();
+    const verNo       = Number(row[verNoIdx]      || 0);
+
+    // (a) 改訂要求スコアであること
+    if (!score || !allowsResubmitSet.has(score)) continue;
+
+    // (b) sentBackAt が設定値より古いこと
+    if (!sentBackAt || !String(sentBackAt).trim()) continue;
+    const sentDate = new Date(sentBackAt);
+    if (isNaN(sentDate.getTime()) || sentDate >= threshold) continue;
+
+    // (c) 受理済みでないこと
+    if (accepted === 'yes') continue;
+
+    // (d) EIC早期却下でないこと（archiveAgedManuscripts で処理される）
+    if (stoppedAt) continue;
+
+    // (e) 最終確認フェーズ中でないこと
+    if (finalStatus === 'final_review' || finalStatus === 'in_production') continue;
+
+    // (f) 最新バージョンであること（再投稿済みの前回ラウンドを除外）
+    if (!msId || verNo !== maxVerNoByMsId[msId]) continue;
+
+    expiredRows.push(row);
+    rowsToDelete.push(i + 1);
+  }
+
+  if (expiredRows.length === 0) {
+    writeLog('archiveExpiredResubmissions: no expired records found (≥ ' + expireMonths + ' months).');
+    return;
+  }
+
+  // ── Expired_archive へ追記 ────────────────────────────────────────────────────
+  _appendRowsToManuscriptArchive(ss, EXPIRED_ARCHIVE_SHEET_NAME, headers, expiredRows);
+
+  // ── Drive フォルダをリネーム ─────────────────────────────────────────────────
+  expiredRows.forEach(row => {
+    const folderUrl = folderUrlIdx !== -1 ? String(row[folderUrlIdx] || '') : '';
+    if (!folderUrl) return;
+    try {
+      const match = folderUrl.match(/[-\w]{25,}/);
+      if (!match) return;
+      const folder = DriveApp.getFolderById(match[0]);
+      const oldName = folder.getName();
+      if (!oldName.includes('[ARCHIVED]')) folder.setName('[ARCHIVED] ' + oldName);
+    } catch(e) {
+      Logger.log('archiveExpiredResubmissions: folder rename failed for MsVer=' +
+        (msVerIdx !== -1 ? String(row[msVerIdx] || '?') : '?') + ': ' + e.message);
+    }
+  });
+
+  // ── Manuscripts から削除（後ろから順に）──────────────────────────────────────
+  rowsToDelete.sort((a, b) => b - a).forEach(idx => msSheet.deleteRow(idx));
+
+  // ── キャッシュ無効化 ──────────────────────────────────────────────────────────
+  try { spreadsheetCache.invalidate(ssId, MANUSCRIPTS_SHEET_NAME); } catch(_) {}
+
+  writeLog('archiveExpiredResubmissions: ' + expiredRows.length +
+    ' manuscript(s) → Expired_archive (sentBackAt ≥ ' + expireMonths + ' months ago).');
+}
+
+/**
+ * 原稿アーカイブシートへ行を追加するヘルパー。
+ * ヘッダーが無ければ Manuscripts シートと同じヘッダーで初期化する。
+ */
+function _appendRowsToManuscriptArchive(ss, sheetName, headers, rows) {
+  if (rows.length === 0) return;
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+      .setFontWeight('bold').setBackground('#f1f5f9');
+    sheet.setFrozenRows(1);
+  } else {
+    // 既存シートのヘッダー列数が不足している場合は拡張
+    const existingCols = sheet.getLastColumn();
+    if (existingCols < headers.length) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers])
+        .setFontWeight('bold').setBackground('#f1f5f9');
+    }
+  }
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+}
+
+/**
  * トリガー設定用ヘルパー
  * GASエディタからこの関数を一度実行すると、必要なトリガーが自動設定されます。
  */
 function setupReportingTriggers() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
+
   // 既存のリポート関連トリガーを削除して重複防止
   const triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(t => {
-    if (t.getHandlerFunction() === 'sendWeeklyActivityReport' || t.getHandlerFunction() === 'archiveMonthlyLogs') {
+    const fn = t.getHandlerFunction();
+    if (fn === 'sendWeeklyActivityReport' || fn === 'archiveMonthlyLogs' ||
+        fn === 'archiveAgedManuscripts'  || fn === 'archiveExpiredResubmissions') {
       ScriptApp.deleteTrigger(t);
     }
   });
@@ -300,12 +584,26 @@ function setupReportingTriggers() {
     .atHour(9)
     .create();
 
-  // 2. 月次アーカイブ: 毎月1日 午前1時
+  // 2. 月次ログアーカイブ: 毎月1日 午前1時
   ScriptApp.newTrigger('archiveMonthlyLogs')
     .timeBased()
     .onMonthDay(1)
     .atHour(1)
     .create();
-    
+
+  // 3. 原稿アーカイブ（受理確定・EIC早期却下）: 毎月15日 午前2時
+  ScriptApp.newTrigger('archiveAgedManuscripts')
+    .timeBased()
+    .onMonthDay(15)
+    .atHour(2)
+    .create();
+
+  // 4. 再投稿期限切れ原稿アーカイブ: 毎月20日 午前3時
+  ScriptApp.newTrigger('archiveExpiredResubmissions')
+    .timeBased()
+    .onMonthDay(20)
+    .atHour(3)
+    .create();
+
   Logger.log('Reporting triggers have been set up successfully.');
 }

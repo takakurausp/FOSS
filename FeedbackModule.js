@@ -3,65 +3,50 @@
  */
 
 function apiSubmitFeedback(data) {
-  if (data.files && data.files.length > 0) {
-    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
-    validateFileSafety(data.files, '添付ファイル / Attachments');
-    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
-  }
+  validateUploadedFiles(data.files);
 
-  const ssId = getSpreadsheetId();
-  const settings = getSettings();
+  var ssId = getSpreadsheetId();
+  var settings = getSettings();
 
-  // 1. 原稿データを取得（著者キーまたは編集委員長専用キーで検索）
-  let msData = getManuscriptData('author', data.msKey);
+  var msData = getManuscriptData('author', data.msKey);
   if (!msData) msData = getManuscriptData('eic', data.msKey);
   if (!msData) throw new Error("Manuscript record not found.");
   
-  const msVer = msData.MsVer;
-  const msId = msData.MS_ID;
-  const now = new Date();
-  const todayNow = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
-  const decisionTemplates = getDecisionTemplates(ssId, data.score);
-  const isAccepted = decisionTemplates.isAccepted ? 'yes' : 'no';
+  var msVer = msData.MsVer;
+  var msId = msData.MS_ID;
+  var todayNow = apiTimestamp();
+  var decisionTemplates = getDecisionTemplates(ssId, data.score);
+  var isAccepted = decisionTemplates.isAccepted ? 'yes' : 'no';
 
-  // 2a. 最終承認（IsAccepted=yes かつ Resubmit=no）の場合は MEルートへ強制転送
-  //     著者・印刷担当者への通知は ME のチェック完了後に行われる
   if (decisionTemplates.isAccepted && !decisionTemplates.allowsResubmit) {
     return _redirectFeedbackToManagingEditorRoute(ssId, msData, data, decisionTemplates, settings);
   }
 
-  // 2. 判定用フォルダを先に作成し、コメントPDF・EICファイルをまとめて格納する
-  //    著者には 1 つのフォルダリンクのみ送付することで混乱を防ぐ
-  const decisionFolder = getAuthorDecisionFolder(msData, settings);
+  var decisionFolder = getAuthorDecisionFolder(msData, settings);
 
-  // 既存ファイルをクリア（再審査・差し替えに対応）
-  const existingFiles = decisionFolder.getFiles();
+  var existingFiles = decisionFolder.getFiles();
   while (existingFiles.hasNext()) {
     existingFiles.next().setTrashed(true);
   }
 
-  // 3. コメントPDFを decisionFolder へ保存
-  let commentPdfUrl = '';
+  var commentPdfUrl = '';
   if (data.commentDocId) {
     try {
-      const journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
-      const nowStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+      var journalName = (settings && settings.Journal_Name) ? settings.Journal_Name : '';
+      var nowStr = apiTimestamp();
 
-      // ① 原本の先頭にヘッダーを挿入
       try {
-        const commentDoc = DocumentApp.openById(data.commentDocId);
+        var commentDoc = DocumentApp.openById(data.commentDocId);
         insertCommentDocHeader(commentDoc.getBody(), journalName, data.score || '', nowStr);
         commentDoc.saveAndClose();
       } catch(eInsert) {
         Logger.log('Header insertion failed: ' + eInsert.message);
       }
 
-      // ② 原本から PDF を取得（Drive API 経由）
-      const pdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
+      var pdfBlob = DriveApp.getFileById(data.commentDocId).getAs(MimeType.PDF);
       pdfBlob.setName('Open-Comments-' + msVer + '.pdf');
 
-      // ③ PDF を decisionFolder に保存（working フォルダではなく著者向けフォルダへ統合）
-      const savedPdf = decisionFolder.createFile(pdfBlob);
+      var savedPdf = decisionFolder.createFile(pdfBlob);
       savedPdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       commentPdfUrl = savedPdf.getUrl();
       if (data.commentEditorKey) {
@@ -73,40 +58,34 @@ function apiSubmitFeedback(data) {
     }
   }
 
-  // 4. EIC 添付ファイルを decisionFolder へ保存
   if (data.files && data.files.length > 0) {
-    data.files.forEach(file => {
-      const blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
+    data.files.forEach(function(file) {
+      var blob = Utilities.newBlob(Utilities.base64Decode(file.content), file.mimeType, file.name);
       decisionFolder.createFile(blob);
     });
   }
 
-  // フォルダに何か入っていれば共有して URL を取得
-  let resultFolderUrl = 'nofile';
+  var resultFolderUrl = 'nofile';
   if (commentPdfUrl || (data.files && data.files.length > 0)) {
     decisionFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     resultFolderUrl = decisionFolder.getUrl();
   }
 
-  // 4. Drive 操作が全て成功した後に Manuscripts シートを更新
   updateManuscriptCell(ssId, msData.key, {
     'score': data.score,
     'openComments': data.openComments || '',
-    'resultFolderUrl': resultFolderUrl, // ★ 公開用判定フォルダのURLを保存
+    'resultFolderUrl': resultFolderUrl,
     'sentBackAt': todayNow,
     'accepted': isAccepted
   });
   
-  // msData オブジェクトに最新の判定結果をセット（後の通知メール生成で使用されるため）
   msData.score = data.score;
   
-  // 5. 著者への通知メール送信
   sendFeedbackToAuthor(msData, data, resultFolderUrl, settings, ssId, decisionTemplates);
   
-  // 6. 委員長（および担当編集者）への確認通知
   sendFeedbackConfirmationToRequester(msData, settings);
   
-  writeLog(`Final Decision Submitted: ${msVer} - Score: ${data.score} (Author: ${msData.CA_Email})`);
+  writeLog('Final Decision Submitted: ' + msVer + ' - Score: ' + data.score + ' (Author: ' + msData.CA_Email + ')');
   
   return { success: true };
 }
@@ -506,7 +485,8 @@ function _redirectFeedbackToManagingEditorRoute(ssId, msData, data, decisionTemp
   updateManuscriptCell(ssId, msData.key, {
     'managingEditorKey': managingEditorKey,
     'finalStatus':       'final_review',
-    'resultFolderUrl':   folderUrl || 'nofile'
+    'resultFolderUrl':   folderUrl || 'nofile',
+    'score':             data.score || ''
   });
 
   // ME（編集幹事）へ通知メールを送信

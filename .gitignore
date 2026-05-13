@@ -1,3 +1,9 @@
 node_modules/
 .clasp.json
+.clasp.json.backup
 .claude/
+
+# 環境別 deployment 設定（scriptId を含むため、本番設定はチーム共有時に注意）
+# プロジェクトポリシー次第で deployments/*.clasp.json の取扱を決める。
+# デフォルトでは「自分専用環境」のみコミット外とする運用を想定し、すべて無視する。
+deployments/*.clasp.json

@@ -13,6 +13,10 @@ const DECISION_MAIL_SHEET_NAME = 'Decisions';
 const LOG_SHEET_NAME = 'Log';
 const ARCHIVE_SHEET_NAME = 'Archive';
 const LOG_ARCHIVE_SHEET_NAME = 'Log_archive';
+const ACCEPTED_ARCHIVE_SHEET_NAME = 'Accepted_archive';
+const REJECTED_ARCHIVE_SHEET_NAME = 'Rejected_archive';
+const EXPIRED_ARCHIVE_SHEET_NAME  = 'Expired_archive';
+const ARCHIVE_AGE_MONTHS = 6;
 
 // リファクタリングされたモジュールの参照
 // Note: GASではモジュールインポートができないため、関数はグローバルスコープで定義されます
@@ -464,6 +468,7 @@ function findRecordByKey(ssId, sheetName, keyColName, keyValue) {
  * 担当編集者・査読者の受諾/辞退回答を処理するAPI
  */
 function apiSubmitInvitationResponse(role, key, answer, message) {
+  enforceRateLimit(key);
   const ssId = getSpreadsheetId();
   const settings = getSettings();
   
@@ -592,6 +597,7 @@ function apiSubmitInvitationResponse(role, key, answer, message) {
  * 未回答の査読者招待を取消す
  */
 function apiCancelReviewerInvitation(reviewKey) {
+  enforceRateLimit(reviewKey);
   const ssId = getSpreadsheetId();
   const reviewLog = findRecordByKey(ssId, REVIEW_LOG_SHEET_NAME, 'reviewKey', reviewKey);
   if (!reviewLog) throw new Error('Reviewer record not found.');
@@ -617,6 +623,7 @@ function apiCancelReviewerInvitation(reviewKey) {
 }
 
 function apiCancelEditorAssignment(editorKey) {
+  enforceRateLimit(editorKey);
   const ssId = getSpreadsheetId();
   const editorLog = findRecordByKey(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', editorKey);
   if (!editorLog) throw new Error('Editor record not found.');
@@ -768,6 +775,7 @@ function apiGetReviewComments(reviewKey) {
  * @param {string} key 著者キー (Manuscripts.key)
  */
 function apiArchiveManuscript(key) {
+  enforceRateLimit(key);
   const ssId = getSpreadsheetId();
   const ss = SpreadsheetApp.openById(ssId);
   const msSheet = ss.getSheetByName(MANUSCRIPTS_SHEET_NAME);

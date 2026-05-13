@@ -5,49 +5,32 @@
 function apiSubmitRecommendation(data) {
   Logger.log('apiSubmitRecommendation: start. editorKey=' + data.editorKey + ' score=' + data.score + ' files=' + (data.files ? data.files.length : 0));
 
-  if (data.files && data.files.length > 0) {
-    data.files.forEach((file, i) => validateFileName(file.name, 'ファイル名 ' + (i + 1)));
-    validateFileSafety(data.files, '添付ファイル / Attachments');
-    validateFileSize(data.files, MAX_ATTACHMENT_BYTES, '添付ファイル / Attachments');
-  }
+  validateUploadedFiles(data.files);
 
-  const ssId = getSpreadsheetId();
-  const settings = getSettings();
+  var ctx = getApiContext('editor', data.editorKey, 'Editor record');
+  Logger.log('apiSubmitRecommendation: msData loaded. MsVer=' + ctx.msData.MsVer + ' MS_ID=' + ctx.msData.MS_ID);
 
-  // 1. 担当編集者のキーから原稿・編集者データを取得
-  const msData = getManuscriptData('editor', data.editorKey);
-  if (!msData) throw new Error("Editor record not found.");
-  Logger.log('apiSubmitRecommendation: msData loaded. MsVer=' + msData.MsVer + ' MS_ID=' + msData.MS_ID);
-
-  // 承諾済み(edtOk='ok')かつ未提出の依頼からのみ推薦を受け付ける。
-  // （同じメールアドレスに新旧2通の招待が届いた場合など、
-  //   古い（辞退/取消済みの）URLから提出されると誤った行に書き込まれる事故を防止）
-  const edtOkStatus = String(msData.edtOk || '').trim();
+  var edtOkStatus = String(ctx.msData.edtOk || '').trim();
   if (edtOkStatus !== 'ok') {
     throw new Error('この依頼は受諾されていないか、辞退・取消済みのため推薦を提出できません。'
                   + '最新の依頼メールに記載のURLをご確認ください。\n'
                   + 'Cannot submit: this editor assignment was not accepted, or has been declined/cancelled. '
                   + 'Please use the URL in the most recent invitation email.');
   }
-  if (String(msData.Received_At || '').trim() !== '') {
+  if (String(ctx.msData.Received_At || '').trim() !== '') {
     throw new Error('この推薦はすでに提出済みのため、再度の提出はできません。\n'
                   + 'This recommendation has already been submitted.');
   }
 
-  const hexId = msData.MsVerRevHex;
-  const msVer = msData.MsVer;
-  const msId = msData.MS_ID;
-  const now = new Date();
-  const todayNow = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+  var hexId = ctx.msData.MsVerRevHex;
+  var msVer = ctx.msData.MsVer;
+  var todayNow = apiTimestamp();
 
-  // 2. 査読報告書（推薦書）の作成 — Drive 操作を先に完了させてから DB を更新する。
-  // createRecommendationReport が例外を投げても DB は未変更のままなので不整合が生じない。
   Logger.log('apiSubmitRecommendation: calling createRecommendationReport...');
-  const reportFiles = createRecommendationReport(msData, data, ssId, settings);
+  var reportFiles = createRecommendationReport(ctx.msData, data, ctx.ssId, ctx.settings);
   Logger.log('apiSubmitRecommendation: createRecommendationReport done.');
 
-  // 3. 全 Drive 操作が成功した後に Editor_log をまとめて更新
-  updateLogCell(ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.editorKey, {
+  updateLogCell(ctx.ssId, EDITOR_LOG_SHEET_NAME, 'editorKey', data.editorKey, {
     'Score':               data.score,
     'Received_At':         todayNow,
     'Message':             data.openComments         || '',
@@ -59,12 +42,9 @@ function apiSubmitRecommendation(data) {
     'reportGoogleDocId':         reportFiles.googleDocId         || ''
   });
 
-  // 4. 通常ルート: 担当編集者の推薦は必ず EIC に送る。
-  //    isAccepted スコアの場合でも、EIC 側で再判定後に apiSubmitFeedback から
-  //    編集幹事ルートへ転送される（FeedbackModule._sendEicAcceptanceToManagingEditor）。
-  sendRecommendationToChiefEditor(msData, data, settings);
+  sendRecommendationToChiefEditor(ctx.msData, data, ctx.settings);
 
-  writeLog(`Recommendation Submitted: ${msVer} by ${msData.Editor_Name} - Score: ${data.score} → EIC`);
+  writeLog('Recommendation Submitted: ' + msVer + ' by ' + ctx.msData.Editor_Name + ' - Score: ' + data.score + ' → EIC');
 
   return { success: true };
 }
