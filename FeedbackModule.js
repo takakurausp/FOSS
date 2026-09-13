@@ -283,20 +283,24 @@ function getDecisionMailOptions(ssId) {
 function getDecisionTemplates(ssId, score) {
   const fallback = {
     shortExplanation: score || 'Decision Reached',
-    mailText:         'Please check the system.',
+    // mailText は著者宛メール本文に直接使用されるため、警告文を入れない（作者に誤解を与えない安全な空欄）。
+    // 内部検出用に _templateMissing / _warnMessage を別途保持する。
+    mailText:         '',
     isAccepted:       false,
-    allowsResubmit:   false
+    allowsResubmit:   false,
+    _templateMissing: true,
+    _warnMessage:     '【警告】Decisions シートの判定テンプレートが未設定です。シート名 "' + DECISION_MAIL_SHEET_NAME + '" の ShortExplanation 行と、各スコア値の定義を確認してください。'
   };
 
   const sheet = _getDecisionsSheet(ssId);
   if (!sheet) {
-    writeLog('[WARN] getDecisionTemplates: Decisions 関連シートが見つかりません。シート名や ShortExplanation 行を確認してください。');
+    writeLog('[WARN] getDecisionTemplates: Decisions 関連シートが見つかりません。シート名が "' + DECISION_MAIL_SHEET_NAME + '" であること、及び ShortExplanation 行が存在することを確認してください。（フォールバック値を返します）');
     return fallback;
   }
 
   const parsed = _findDecisionsSheetRows(sheet);
   if (!parsed) {
-    writeLog('[WARN] getDecisionTemplates: シート "' + DECISION_MAIL_SHEET_NAME + '" に ShortExplanation ヘッダー行が見つかりません。');
+    writeLog('[WARN] getDecisionTemplates: シート "' + DECISION_MAIL_SHEET_NAME + '" に ShortExplanation ヘッダー行が見つかりません。シート先頭1行目に「ShortExplanation」「IsAccepted」「Resubmit」のヘッダーを配置してください。（フォールバック値を返します）');
     return fallback;
   }
   const { headerRowIdx, headers, data } = parsed;
@@ -315,7 +319,7 @@ function getDecisionTemplates(ssId, score) {
 
   const row = data.slice(headerRowIdx + 1).find(r => String(r[sIdx]).trim() === String(score).trim());
   if (!row) {
-    writeLog('[WARN] getDecisionTemplates: score="' + score + '" に一致する行が Decisions シートに見つかりません。');
+    writeLog('[WARN] getDecisionTemplates: score="' + score + '" に一致する行が Decisions シートに見つかりません。ShortExplanation 列にこのスコア値を定義してください。（フォールバック値を返します）');
     return fallback;
   }
 
@@ -329,7 +333,8 @@ function getDecisionTemplates(ssId, score) {
     shortExplanation: String(row[sIdx] || '').trim(),
     mailText:         tIdx !== -1 ? String(row[tIdx] || '').trim() : '',
     isAccepted:       isAcceptedBool,
-    allowsResubmit:   allowsResubmitBool
+    allowsResubmit:   allowsResubmitBool,
+    _templateMissing: false
   };
 }
 
