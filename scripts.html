@@ -1568,9 +1568,15 @@ function _renderResubmissionFormInner(container, ms, manuscriptTypes) {
   const current = ms.MsVer || ms.MS_ID || 'Unknown';
   let next = current;
   try {
-    const parts = current.split('-');
-    const last = parseInt(parts[parts.length - 1]);
-    if (!isNaN(last)) { parts[parts.length - 1] = last + 1; next = parts.join('-'); } else { next = current + '-2'; }
+    // サーバー側 parseMsVer（ValidationUtils.js）と同一ロジックに統一。
+    // split('-') で全ハイフン分割すると MS_ID にハイフンを含む場合にズレるため、
+    // lastIndexOf('-')（最後のハイフンのみ）で msId と verNo を分離する。
+    const idx = current.lastIndexOf('-');
+    if (idx === -1) { next = current + '-2'; }
+    else {
+      const verNo = parseInt(current.substring(idx + 1), 10) || 1;
+      next = current.substring(0, idx) + '-' + (verNo + 1);
+    }
   } catch(e) { next = current + '-2'; }
 
   // 前回値のマッピング
